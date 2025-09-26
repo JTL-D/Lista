@@ -2,38 +2,40 @@
 <html lang="el">
 <head>
   <meta charset="UTF-8">
-  <title>Excel Loader & Validator</title>
+  <title>Loader & Validator Module</title>
   <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
 </head>
 <body>
-  <h2>v3</h2>
-  <h1>1️⃣ Loader & Validator Module</h1>
+
+  <h2>Loader & Validator Module</h2>
 
   <div class="upload-container">
+    <!-- MASTER Upload -->
     <div class="upload-box" id="masterDrop">
-      <p>Εισάγετε EXCEL με πελάτες Ημέρας</p>
-      <div class="hint">Κωδ.Πελάτη, Συνεργάτης, Οδός • Όχι INFO.xlsx</div>
-      <input type="file" id="masterInput" accept=".xlsx,.xls" />
+      <h3>Endpoint: EXCEL με πολλαπλά tabs</h3>
+      <input type="file" id="masterInput" />
       <div class="file-name" id="masterFileName"></div>
     </div>
-
+    <!-- INFO Upload -->
     <div class="upload-box" id="infoDrop">
-      <p>Εισάγετε INFO EXCEL</p>
-      <div class="hint">Όνομα αρχείου: INFO.xlsx</div>
-      <input type="file" id="infoInput" accept=".xlsx,.xls" />
+      <h3>Endpoint: NON-EXCEL</h3>
+      <input type="file" id="infoInput" />
       <div class="file-name" id="infoFileName"></div>
     </div>
   </div>
 
   <div id="preview">
-    <p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>
+    <p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>
   </div>
 
-  <!-- ExcelJS CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
-  <!-- Main module -->
+  <!-- ExcelJS από CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <!-- Main module: χειρίζεται change events -->
   <script type="module" src="js/main.js"></script>
+  <!-- Loader & Validator modules -->
+  <script type="module" src="js/loader.js"></script>
+  <script type="module" src="js/validator.js"></script>
 </body>
 </html>
