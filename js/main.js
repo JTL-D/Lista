@@ -29,13 +29,13 @@ document.addEventListener('DOMContentLoaded', () => {
    * Σπάει το msg στο "<br>" και δημιουργεί δύο <p>:
    *  κόκκινο για το λάθος και γκρι για την προτροπή.
    */
-  function showError(msg, box) {
-    const [errLine, reqLine] = msg.split(/<br\s*\/?>/);
-    preview.innerHTML =
-      `<p style="color:red; margin:0;">${errLine.trim()}</p>` +
-      `<p style="color:#555; margin:0 0 1rem;">${reqLine.trim()}</p>`;
-    if (box) box.classList.add('error');
-  }
+
+function showError(msg, box) {
+  preview.innerHTML =
+    `<p style="color:red; white-space: pre-line; margin:0;">${msg}</p>`;
+  if (box) box.classList.add('error');
+}
+
 
   function clearBox(box, nameEl) {
     box.classList.remove('error','loaded');
