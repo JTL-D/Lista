@@ -1,1 +1,17 @@
 
+/* css/layout.css */
+.upload-container {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  margin: 2rem auto;
+  max-width: 800px;
+}
+#preview {
+  background: #fff;
+  padding: 1rem;
+  border: 1px solid #ddd;
+  min-height: 4rem;
+  margin: 0 auto 2rem;
+  max-width: 800px;
+}
