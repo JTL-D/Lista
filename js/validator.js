@@ -5,9 +5,9 @@ const requiredCols = ['Κωδ.Πελάτη','Συνεργάτης','Οδός'];
 /**
  * Ελέγχει ότι στο πρώτο φύλλο του wb υπάρχουν
  * όλες οι απαιτούμενες στήλες.
- * Αν λείπουν, πετάει Error με δύο γραμμές:
- * 1η: τι λείπει
- * 2η: ποιες είναι οι απαιτήσεις
+ * Αν λείπουν, πετάει Error με μήνυμα που περιέχει <br>
+ * για να σπάσει σε δύο γραμμές.
+ *
  * @param {ExcelJS.Workbook} wb
  * @throws Error
  */
@@ -18,8 +18,12 @@ export function validateMasterWorkbook(wb) {
     .values
     .slice(1)
     .map(v => (typeof v === 'string' ? v.trim() : v));
+  
   const missing = requiredCols.filter(c => !header.includes(c));
+  
   if (missing.length) {
+    // 1η γραμμή: τι λείπει
+    // 2η γραμμή: ποιες στήλες απαιτούνται
     const msg =
       `Λείπουν στήλες: ${missing.join(', ')}.<br>` +
       `Απαιτούμενες: ${requiredCols.join(', ')}.`;
