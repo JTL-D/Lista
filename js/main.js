@@ -1,2 +1,126 @@
+// js/main.js
 
-// js/main.js ΑΠΟ ΤΟ LOADER BRANCH import { loadWorkbook } from './loader.js'; import { validateMasterWorkbook } from './validator.js'; const masterInput = document.getElementById('masterInput'); const infoInput = document.getElementById('infoInput'); const masterDrop = document.getElementById('masterDrop'); const infoDrop = document.getElementById('infoDrop'); const masterFileName = document.getElementById('masterFileName'); const infoFileName = document.getElementById('infoFileName'); const preview = document.getElementById('preview'); const state = { files: { master: null, info: null }, context: {} }; function getExt(file) { const idx = file.name.lastIndexOf('.'); return idx > -1 ? file.name.slice(idx + 1).toLowerCase() : ''; } function getBaseName(file) { const idx = file.name.lastIndexOf('.'); return idx > -1 ? file.name.slice(0, idx) : file.name; } function isValidExcel(file) { const ext = getExt(file); return ext === 'xlsx' || ext === 'xls'; } /** * Εμφανίζει error σε 2 παραγράφους: * - 1η γραμμή κόκκινη (errLine) * - 2η γραμμή γκρι (reqLine) * Σπάει το msg στο πρώτο ". " (τελεία+κενό). */ function showError(msg, box) { // σπάμε στο πρώτο ". " const parts = msg.split('. '); const errLine = parts.shift() + '.'; const reqLine = parts.join('. '); preview.innerHTML = `<p style="color:red; margin:0;">${errLine}</p>` + `<p style="color:#555; margin:0 0 1rem;">${reqLine}</p>`; if (box) box.classList.add('error'); } function clearBoxUI(box) { box.classList.remove('error','loaded'); if (box === masterDrop) masterFileName.textContent = ''; if (box === infoDrop) infoFileName.textContent = ''; preview.innerHTML = `<p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>`; } async function tryLoadWorkbooks() { if (!state.files.master || !state.files.info) return; preview.innerHTML = '<p>Φορτώνω & ελέγχω το INFO αρχείο…</p>'; try { const wbM = await loadWorkbook(state.files.master); const wbI = await loadWorkbook(state.files.info); state.context.workbookMaster = wbM; state.context.workbookInfo = wbI; if (getBaseName(state.files.info).toUpperCase() !== 'INFO') { showError(`Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls`, infoDrop); return; } const sheetsM = wbM.worksheets.map(ws => ws.name); const sheetsI = wbI.worksheets.map(ws => ws.name); preview.innerHTML = ` <h2>Έλεγχος ΕΠΙΤΥΧΙΑ</h2> <p><strong>Πελάτες sheets:</strong> ${sheetsM.join(', ')}</p> <p><strong>INFO sheets:</strong> ${sheetsI.join(', ')}</p> `; } catch (err) { showError(`Σφάλμα κατά την επεξεργασία: ${err.message}`); } } masterInput.addEventListener('change', async e => { clearBoxUI(masterDrop); const file = e.target.files[0] || null; state.files.master = null; if (!file) return; if (getBaseName(file).toUpperCase() === 'INFO') { showError(`Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ.`, masterDrop); return; } if (!isValidExcel(file)) { showError(`Μη έγκυρος τύπος αρχείου: ${file.name}`, masterDrop); return; } try { const wb = await loadWorkbook(file); validateMasterWorkbook(wb); } catch (err) { showError(err.message, masterDrop); return; } masterDrop.classList.add('loaded'); masterFileName.textContent = file.name; state.files.master = file; tryLoadWorkbooks(); }); infoInput.addEventListener('change', async e => { clearBoxUI(infoDrop); const file = e.target.files[0] || null; state.files.info = null; if (!file) return; if (!isValidExcel(file) || getBaseName(file).toUpperCase() !== 'INFO') { showError(`Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls`, infoDrop); return; } infoDrop.classList.add('loaded'); infoFileName.textContent = file.name; state.files.info = file; tryLoadWorkbooks(); });
+import { loadWorkbook } from './loader.js';
+import { validateMasterWorkbook } from './validator.js';
+import { unmergeAndClean } from './unmergeClean.js';
+
+const defaultPreview = `<p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>`;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const masterInput    = document.getElementById('masterInput');
+  const infoInput      = document.getElementById('infoInput');
+  const masterDrop     = document.getElementById('masterDrop');
+  const infoDrop       = document.getElementById('infoDrop');
+  const masterFileName = document.getElementById('masterFileName');
+  const infoFileName   = document.getElementById('infoFileName');
+  const preview        = document.getElementById('preview');
+
+  let masterFile = null;
+  let infoFile   = null;
+
+  function getBaseName(file) {
+    return file.name.slice(0, file.name.lastIndexOf('.'));
+  }
+  function getExt(file) {
+    return file.name.split('.').pop().toLowerCase();
+  }
+
+  /**
+   * Σπάει το msg στο "<br>" και δημιουργεί δύο <p>:
+   *  κόκκινο για το λάθος και γκρι για την προτροπή.
+   */
+  function showError(msg, box) {
+    const [errLine, reqLine] = msg.split(/<br\s*\/?>/);
+    preview.innerHTML =
+      `<p style="color:red; margin:0;">${errLine.trim()}</p>` +
+      `<p style="color:#555; margin:0 0 1rem;">${reqLine.trim()}</p>`;
+    if (box) box.classList.add('error');
+  }
+
+  function clearBox(box, nameEl) {
+    box.classList.remove('error','loaded');
+    nameEl.textContent = '';
+    preview.innerHTML = defaultPreview;
+  }
+
+  async function processFiles() {
+    preview.innerHTML = `<p>Φορτώνω & ελέγχω αρχεία…</p>`;
+    try {
+      // Master
+      const wbM = await loadWorkbook(masterFile);
+      validateMasterWorkbook(wbM);
+      unmergeAndClean(wbM);
+
+      // INFO
+      const wbI = await loadWorkbook(infoFile);
+      if (getBaseName(infoFile).toUpperCase() !== 'INFO') {
+        throw new Error(
+          'Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls' +
+          '<br>Μετονομάστε το σε INFO.xlsx'
+        );
+      }
+
+      // Επιτυχία
+      preview.innerHTML = `
+        <h2>Έλεγχος ΕΠΙΤΥΧΙΑ</h2>
+        <p><strong>Master sheets:</strong> ${wbM.worksheets.map(ws => ws.name).join(', ')}</p>
+        <p><strong>INFO sheets:</strong> ${wbI.worksheets.map(ws => ws.name).join(', ')}</p>
+      `;
+    } catch (err) {
+      showError(err.message, null);
+    }
+  }
+
+  masterInput.addEventListener('change', e => {
+    clearBox(masterDrop, masterFileName);
+    const file = e.target.files[0] || null;
+    masterFile = null;
+    if (!file) return;
+
+    if (getBaseName(file).toUpperCase() === 'INFO') {
+      showError(
+        `Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ.` +
+        `<br>Επέλεξε αρχείο πελατών`,
+        masterDrop
+      );
+      return;
+    }
+    if (!['xlsx','xls'].includes(getExt(file))) {
+      showError(
+        `Μη έγκυρος τύπος αρχείου: ${file.name}` +
+        `<br>Χρησιμοποίησε .xlsx ή .xls`,
+        masterDrop
+      );
+      return;
+    }
+
+    masterDrop.classList.add('loaded');
+    masterFileName.textContent = file.name;
+    masterFile = file;
+    if (infoFile) processFiles();
+  });
+
+  infoInput.addEventListener('change', e => {
+    clearBox(infoDrop, infoFileName);
+    const file = e.target.files[0] || null;
+    infoFile = null;
+    if (!file) return;
+
+    if (getBaseName(file).toUpperCase() !== 'INFO' ||
+        !['xlsx','xls'].includes(getExt(file))) {
+      showError(
+        `Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls` +
+        `<br>Μετονομάστε το σε INFO.xlsx`,
+        infoDrop
+      );
+      return;
+    }
+
+    infoDrop.classList.add('loaded');
+    infoFileName.textContent = file.name;
+    infoFile = file;
+    if (masterFile) processFiles();
+  });
+
+  preview.innerHTML = defaultPreview;
+});
