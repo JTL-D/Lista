@@ -15,26 +15,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const infoFileName   = document.getElementById('infoFileName');
   const preview        = document.getElementById('preview');
 
-  const state = { masterFile: null, infoFile: null };
+  let masterFile = null;
+  let infoFile   = null;
 
-  // Helpers από inline logic
-  function getExt(file) {
-    const idx = file.name.lastIndexOf('.');
-    return idx > -1 ? file.name.slice(idx+1).toLowerCase() : '';
-  }
   function getBaseName(file) {
-    const idx = file.name.lastIndexOf('.');
-    return idx > -1 ? file.name.slice(0, idx) : file.name;
+    return file.name.slice(0, file.name.lastIndexOf('.'));
   }
-  function isValidExcel(file) {
-    const ext = getExt(file);
-    return ext === 'xlsx' || ext === 'xls';
+  function getExt(file) {
+    return file.name.split('.').pop().toLowerCase();
   }
 
   /**
-   * Σπάει το msg στο "<br>" και δημιουργεί
-   * δύο <p>, το πρώτο κόκκινο (λάθος),
-   * το δεύτερο γκρι (προτροπή/απαίτηση).
+   * Σπάει το msg στο "<br>" και δημιουργεί δύο <p>:
+   *  κόκκινο για το λάθος και γκρι για την προτροπή.
    */
   function showError(msg, box) {
     const [errLine, reqLine] = msg.split(/<br\s*\/?>/);
@@ -53,20 +46,21 @@ document.addEventListener('DOMContentLoaded', () => {
   async function processFiles() {
     preview.innerHTML = `<p>Φορτώνω & ελέγχω αρχεία…</p>`;
     try {
-      // 1. Φόρτωμα Master, έλεγχος στηλών, unmerge & clean
-      const wbM = await loadWorkbook(state.masterFile);
+      // Master
+      const wbM = await loadWorkbook(masterFile);
       validateMasterWorkbook(wbM);
       unmergeAndClean(wbM);
 
-      // 2. Φόρτωμα INFO & έλεγχος ονόματος
-      const wbI = await loadWorkbook(state.infoFile);
-      if (getBaseName(state.infoFile).toUpperCase() !== 'INFO') {
+      // INFO
+      const wbI = await loadWorkbook(infoFile);
+      if (getBaseName(infoFile).toUpperCase() !== 'INFO') {
         throw new Error(
-          'Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls'
+          'Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls' +
+          '<br>Μετονομάστε το σε INFO.xlsx'
         );
       }
 
-      // 3. Εμφάνιση επιτυχίας
+      // Επιτυχία
       preview.innerHTML = `
         <h2>Έλεγχος ΕΠΙΤΥΧΙΑ</h2>
         <p><strong>Master sheets:</strong> ${wbM.worksheets.map(ws => ws.name).join(', ')}</p>
@@ -80,20 +74,21 @@ document.addEventListener('DOMContentLoaded', () => {
   masterInput.addEventListener('change', e => {
     clearBox(masterDrop, masterFileName);
     const file = e.target.files[0] || null;
+    masterFile = null;
     if (!file) return;
 
     if (getBaseName(file).toUpperCase() === 'INFO') {
       showError(
         `Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ.` +
-        `<br>Επέλεξε αρχείο πελατών`, 
+        `<br>Επέλεξε αρχείο πελατών`,
         masterDrop
       );
       return;
     }
-    if (!isValidExcel(file)) {
+    if (!['xlsx','xls'].includes(getExt(file))) {
       showError(
         `Μη έγκυρος τύπος αρχείου: ${file.name}` +
-        `<br>Χρησιμοποίησε .xlsx ή .xls`, 
+        `<br>Χρησιμοποίησε .xlsx ή .xls`,
         masterDrop
       );
       return;
@@ -101,19 +96,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     masterDrop.classList.add('loaded');
     masterFileName.textContent = file.name;
-    state.masterFile = file;
-    if (state.infoFile) processFiles();
+    masterFile = file;
+    if (infoFile) processFiles();
   });
 
   infoInput.addEventListener('change', e => {
     clearBox(infoDrop, infoFileName);
     const file = e.target.files[0] || null;
+    infoFile = null;
     if (!file) return;
 
-    if (!isValidExcel(file) || getBaseName(file).toUpperCase() !== 'INFO') {
+    if (getBaseName(file).toUpperCase() !== 'INFO' ||
+        !['xlsx','xls'].includes(getExt(file))) {
       showError(
         `Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls` +
-        `<br>Μετονόμασέ το σε INFO.xlsx`, 
+        `<br>Μετονομάστε το σε INFO.xlsx`,
         infoDrop
       );
       return;
@@ -121,10 +118,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     infoDrop.classList.add('loaded');
     infoFileName.textContent = file.name;
-    state.infoFile = file;
-    if (state.masterFile) processFiles();
+    infoFile = file;
+    if (masterFile) processFiles();
   });
 
-  // init
   preview.innerHTML = defaultPreview;
 });
