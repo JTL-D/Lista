@@ -28,10 +28,24 @@ function isValidExcel(file) {
   const ext = getExt(file);
   return ext === 'xlsx' || ext === 'xls';
 }
+/**
+ * Εμφανίζει error σε 2 παραγράφους:
+ *  - 1η γραμμή κόκκινη (errLine)
+ *  - 2η γραμμή γκρι (reqLine)
+ * Σπάει το msg στο πρώτο ". " (τελεία+κενό).
+ */
 function showError(msg, box) {
-  preview.innerHTML = `<p style="color:red;">${msg}</p>`;
+  // σπάμε στο πρώτο ". "
+  const parts = msg.split('. ');
+  const errLine = parts.shift() + '.';
+  const reqLine = parts.join('. ');
+
+  preview.innerHTML =
+    `<p style="color:red; margin:0;">${errLine}</p>` +
+    `<p style="color:#555; margin:0 0 1rem;">${reqLine}</p>`;
   if (box) box.classList.add('error');
 }
+
 function clearBoxUI(box) {
   box.classList.remove('error','loaded');
   if (box === masterDrop) masterFileName.textContent = '';
