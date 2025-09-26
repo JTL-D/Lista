@@ -1,5 +1,4 @@
 // js/unmergeClean.js
-
 export function unmergeAndClean(wb) {
   wb.worksheets.forEach(ws => {
     ws._merges.forEach(range => ws.unMergeCells(range));
