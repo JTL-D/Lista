@@ -8,17 +8,15 @@
   <link rel="stylesheet" href="css/layout.css">
 </head>
 <body>
-
-  <h2>Loader & Validator Module v2</h2>
+  <h2>Loader & Validator Module</h2>
 
   <div class="upload-container">
-    <!-- MASTER Upload -->
     <div class="upload-box" id="masterDrop">
       <h3>Endpoint: EXCEL με πολλαπλά tabs</h3>
       <input type="file" id="masterInput" />
       <div class="file-name" id="masterFileName"></div>
     </div>
-    <!-- INFO Upload -->
+
     <div class="upload-box" id="infoDrop">
       <h3>Endpoint: NON-EXCEL</h3>
       <input type="file" id="infoInput" />
@@ -30,12 +28,9 @@
     <p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>
   </div>
 
-  <!-- ExcelJS από CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
-  <!-- Main module: χειρίζεται change events -->
-  <script type="module" src="js/main.js"></script>
-  <!-- Loader & Validator modules -->
   <script type="module" src="js/loader.js"></script>
   <script type="module" src="js/validator.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
