@@ -1,1 +1,37 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="UTF-8">
+  <title>Excel Loader & Validator</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
 
+  <h1>1️⃣ Loader & Validator Module</h1>
+
+  <div class="upload-container">
+    <div class="upload-box" id="masterDrop">
+      <p>Εισάγετε EXCEL με πελάτες Ημέρας</p>
+      <div class="hint">Κωδ.Πελάτη, Συνεργάτης, Οδός • Όχι INFO.xlsx</div>
+      <input type="file" id="masterInput" accept=".xlsx,.xls" />
+      <div class="file-name" id="masterFileName"></div>
+    </div>
+
+    <div class="upload-box" id="infoDrop">
+      <p>Εισάγετε INFO EXCEL</p>
+      <div class="hint">Όνομα αρχείου: INFO.xlsx</div>
+      <input type="file" id="infoInput" accept=".xlsx,.xls" />
+      <div class="file-name" id="infoFileName"></div>
+    </div>
+  </div>
+
+  <div id="preview">
+    <p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
