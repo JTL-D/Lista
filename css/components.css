@@ -35,3 +35,17 @@
   font-size: 0.8rem;
   color: #555;
 }
+/* css/components.css */
+
+.upload-btn {
+  margin-top: 0.5rem;
+}
+.preview-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 1rem;
+}
+.preview-table td {
+  border: 1px solid #ccc;
+  padding: 0.5rem;
+}
