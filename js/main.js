@@ -31,10 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
    */
 
 function showError(msg, box) {
-  preview.innerHTML =
-    `<p style="color:red; white-space: pre-line; margin:0;">${msg}</p>`;
+  preview.innerHTML = `<p style="color:red;">${msg}</p>`;
   if (box) box.classList.add('error');
 }
+
 
 
   function clearBox(box, nameEl) {
