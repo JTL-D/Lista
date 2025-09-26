@@ -1,18 +1,65 @@
 // js/main.js
-// Legacy functions - δεν πειράζονται
+import { loadWorkbook } from './loader.js';
+import { validateMasterWorkbook, validateInfoWorkbook } from './validator.js';
 
-async function uploadMaster() {
-  const input = document.getElementById('masterDropFile');
-  if (!input.files || !input.files[0]) return;
-  document.getElementById('masterDropFileName').textContent =
-    input.files[0].name;
-  // υπάρχουσα λογική validation για MASTER
+const masterInput    = document.getElementById('masterInput');
+const infoInput      = document.getElementById('infoInput');
+const masterDrop     = document.getElementById('masterDrop');
+const infoDrop       = document.getElementById('infoDrop');
+const masterFileName = document.getElementById('masterFileName');
+const infoFileName   = document.getElementById('infoFileName');
+const preview        = document.getElementById('preview');
+
+function showError(msg, box) {
+  const [first, ...rest] = msg.split('. ');
+  preview.innerHTML =
+    `<p style="color:red; margin:0;">${first}.</p>` +
+    `<p style="color:#555; margin:0 0 1rem;">${rest.join('. ')}</p>`;
+  if (box) box.classList.add('error');
 }
 
-async function uploadData() {
-  const input = document.getElementById('dataDropFile');
-  if (!input.files || !input.files[0]) return;
-  document.getElementById('dataDropFileName').textContent =
-    input.files[0].name;
-  // υπάρχουσα λογική data upload (θα αντικατασταθεί από loader.js)
+function clearBox(box) {
+  box.classList.remove('error','loaded');
+  if (box===masterDrop) masterFileName.textContent = '';
+  if (box===infoDrop)   infoFileName.textContent   = '';
+  preview.innerHTML = `<p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>`;
 }
+
+async function tryLoad() {
+  if (!masterInput.files[0] || !infoInput.files[0]) return;
+  preview.innerHTML = '<p>Φορτώνω & ελέγχω το INFO αρχείο…</p>';
+  try {
+    const wbM = await loadWorkbook(masterInput.files[0]);
+    validateMasterWorkbook(wbM);
+    const wbI = await loadWorkbook(infoInput.files[0]);
+    validateInfoWorkbook(wbI);
+
+    const sM = wbM.worksheets.map(ws=>ws.name).join(', ');
+    const sI = wbI.worksheets.map(ws=>ws.name).join(', ');
+    preview.innerHTML = `
+      <h2>Έλεγχος ΕΠΙΤΥΧΙΑ</h2>
+      <p><strong>Master sheets:</strong> ${sM}</p>
+      <p><strong>INFO sheets:</strong> ${sI}</p>
+    `;
+  } catch (err) {
+    showError(err.message, err.message.includes('Master')? masterDrop : infoDrop);
+  }
+}
+
+masterInput.addEventListener('change', e => {
+  clearBox(masterDrop);
+  const f = e.target.files[0];
+  if (!f) return;
+  masterFileName.textContent = f.name;
+  masterDrop.classList.add('loaded');
+  tryLoad();
+});
+
+infoInput.addEventListener('change', e => {
+  clearBox(infoDrop);
+  const f = e.target.files[0];
+  if (!f) return;
+  infoFileName.textContent = f.name;
+  infoDrop.classList.add('loaded');
+  tryLoad();
+});
