@@ -7,7 +7,6 @@ export function validateMasterWorkbook(wb) {
     .map(v => typeof v==='string' ? v.trim() : v);
   const missing = requiredCols.filter(c => !header.includes(c));
   if (missing.length) {
-    // 1η γραμμή + \n + 2η γραμμή
     const msg =
       `Λείπουν στήλες: ${missing.join(', ')}.` +
       `\nΑπαιτούμενες: ${requiredCols.join(', ')}.`;
