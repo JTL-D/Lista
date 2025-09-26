@@ -1,24 +1,27 @@
 // js/validator.js
-
 const requiredCols = ['Κωδ.Πελάτη','Συνεργάτης','Οδός'];
 
 /**
- * Ελέγχει ότι στο πρώτο φύλλο του wb υπάρχουν όλες οι απαιτούμενες στήλες.
- * @param {ExcelJS.Workbook} wb
- * @throws Error αν λείπουν στήλες
+ * Ελέγχει ότι το master workbook έχει
+ * τις υποχρεωτικές στήλες στο πρώτο φύλλο.
+ * Αν λείπουν, πετάει Error με δύο μέρη:
+ * 1η γραμμή: τι λείπει
+ * 2η γραμμή: ποιες είναι οι απαιτήσεις
  */
-export function validateMasterWorkbook(wb) {
-  const header = wb
-    .worksheets[0]
+export function validateMaster(ctx) {
+  const ws = ctx.context.workbookMaster.worksheets[0];
+  const header = ws
     .getRow(1)
     .values
     .slice(1)
     .map(v => (typeof v === 'string' ? v.trim() : v));
-  const missing = requiredCols.filter(c => !header.includes(c));
+  const missing = requiredCols.filter(col => !header.includes(col));
+
   if (missing.length) {
-    throw new Error(
-      `Λείπουν στήλες: ${missing.join(', ')}. ` +
-      `Απαιτούμενες: ${requiredCols.join(', ')}.`
-    );
+    const msg =
+      `Λείπουν στήλες: ${missing.join(', ')}.<br>` +
+      `Απαιτούμενες: ${requiredCols.join(', ')}.`;
+    throw new Error(msg);
   }
+  return ctx;
 }
