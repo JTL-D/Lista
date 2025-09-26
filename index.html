@@ -4,36 +4,37 @@
   <meta charset="UTF-8">
   <title>Excel Loader & Validator</title>
   <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
 </head>
 <body>
-  <h2>v1</h2>
-  <h1>1️⃣ Loader & Validator Module</h1>
+  <h2>Excel Loader & Validator Module</h2>
 
   <div class="upload-container">
     <div class="upload-box" id="masterDrop">
-      <p>Εισάγετε EXCEL με πελάτες Ημέρας</p>
-      <div class="hint">Κωδ.Πελάτη, Συνεργάτης, Οδός • Όχι INFO.xlsx</div>
-      <input type="file" id="masterInput" accept=".xlsx,.xls" />
-      <div class="file-name" id="masterFileName"></div>
+      <h3>Εισάγετε INFO EXCEL</h3>
+      <input type="file" id="masterDropFile" class="drop_file" />
+      <div class="file-name" id="masterDropFileName"></div>
+      <button class="upload-btn" onclick="loadFile('master')">Upload</button>
     </div>
 
-    <div class="upload-box" id="infoDrop">
-      <p>Εισάγετε INFO EXCEL</p>
-      <div class="hint">Όνομα αρχείου: INFO.xlsx</div>
-      <input type="file" id="infoInput" accept=".xlsx,.xls" />
-      <div class="file-name" id="infoFileName"></div>
+    <div class="upload-box" id="dataDrop">
+      <h3>Εισάγετε EXCEL με πελάτες Ημέρας</h3>
+      <input type="file" id="dataDropFile" class="drop_file" />
+      <div class="file-name" id="dataDropFileName"></div>
+      <button class="upload-btn" onclick="loadFile('data')">Upload</button>
     </div>
   </div>
 
   <div id="preview">
-    <p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>
+    <h3>Preview</h3>
   </div>
 
-  <!-- ExcelJS CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
-  <!-- Main module -->
-  <script type="module" src="js/main.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <script src="js/main.js"></script>
+  <script type="module" src="js/loader.js"></script>
+  <script type="module" src="js/unmergeClean.js"></script>
+  <script type="module" src="js/preview.js"></script>
+  <script type="module" src="js/validator.js"></script>
 </body>
 </html>
