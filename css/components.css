@@ -1,1 +1,38 @@
 
+/* css/components.css */
+.upload-box {
+  border: 2px dashed #aaa;
+  padding: 1rem;
+  width: 250px;
+  text-align: center;
+  background: #fff;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s, border-color 0.3s;
+}
+.upload-box.loaded {
+  background: #e6ffed;
+  border-color: #4caf50;
+}
+.upload-box.error {
+  background: #ffe6e6;
+  border-color: #f44336;
+}
+.upload-box input {
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+.file-name {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+.hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #555;
+}
