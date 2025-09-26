@@ -1,127 +1,113 @@
 // js/main.js
 
-import { Loader } from './loader.js';
-import { validateMaster } from './validator.js';
-import { unmergeAndClean } from './unmergeClean.js';
+import { loadWorkbook } from './loader.js';
+import { validateMasterWorkbook } from './validator.js';
 
-const requiredCols = ['Κωδ.Πελάτη','Συνεργάτης','Οδός'];
-const defaultPreview = `<p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>`;
+const masterInput    = document.getElementById('masterInput');
+const infoInput      = document.getElementById('infoInput');
+const masterDrop     = document.getElementById('masterDrop');
+const infoDrop       = document.getElementById('infoDrop');
+const masterFileName = document.getElementById('masterFileName');
+const infoFileName   = document.getElementById('infoFileName');
+const preview        = document.getElementById('preview');
 
-document.addEventListener('DOMContentLoaded', () => {
-  const masterInput    = document.getElementById('masterInput');
-  const infoInput      = document.getElementById('infoInput');
-  const masterDrop     = document.getElementById('masterDrop');
-  const infoDrop       = document.getElementById('infoDrop');
-  const masterFileName = document.getElementById('masterFileName');
-  const infoFileName   = document.getElementById('infoFileName');
-  const preview        = document.getElementById('preview');
+const state = {
+  files: { master: null, info: null },
+  context: {}
+};
 
-  const state = {
-    files: { master: null, info: null },
-    context: { workbookMaster: null, workbookInfo: null }
-  };
+function getExt(file) {
+  const idx = file.name.lastIndexOf('.');
+  return idx > -1 ? file.name.slice(idx + 1).toLowerCase() : '';
+}
+function getBaseName(file) {
+  const idx = file.name.lastIndexOf('.');
+  return idx > -1 ? file.name.slice(0, idx) : file.name;
+}
+function isValidExcel(file) {
+  const ext = getExt(file);
+  return ext === 'xlsx' || ext === 'xls';
+}
+function showError(msg, box) {
+  preview.innerHTML = `<p style="color:red;">${msg}</p>`;
+  if (box) box.classList.add('error');
+}
+function clearBoxUI(box) {
+  box.classList.remove('error','loaded');
+  if (box === masterDrop) masterFileName.textContent = '';
+  if (box === infoDrop)   infoFileName.textContent   = '';
+  preview.innerHTML = `<p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>`;
+}
 
-  // Helpers από τον inline κώδικα
-  function getExt(file) {
-    const idx = file.name.lastIndexOf('.');
-    return idx > -1 ? file.name.slice(idx+1).toLowerCase() : '';
-  }
-  function getBaseName(file) {
-    const idx = file.name.lastIndexOf('.');
-    return idx > -1 ? file.name.slice(0, idx) : file.name;
-  }
-  function isValidExcel(file) {
-    const ext = getExt(file);
-    return ext === 'xlsx' || ext === 'xls';
-  }
+async function tryLoadWorkbooks() {
+  if (!state.files.master || !state.files.info) return;
 
-  function showStatus(msg, isError = false) {
-    preview.innerHTML = `<p style="color:${isError?'red':'green'};">${msg}</p>`;
-  }
-  function clearPreview() {
-    preview.innerHTML = defaultPreview;
-  }
+  preview.innerHTML = '<p>Φορτώνω & ελέγχω το INFO αρχείο…</p>';
+  try {
+    const wbM = await loadWorkbook(state.files.master);
+    const wbI = await loadWorkbook(state.files.info);
+    state.context.workbookMaster = wbM;
+    state.context.workbookInfo   = wbI;
 
-  async function orchestrate() {
-    try {
-      // Φόρτωμα
-      await Loader(state);
-
-      // Έλεγχος υποχρεωτικών στηλών
-      validateMaster(state);
-
-      // Unmerge & Clean
-      unmergeAndClean(state);
-
-      showStatus('Validation ✓ Unmerge & Clean ✓');
-    } catch (err) {
-      showStatus(err.message, true);
-    }
-  }
-
-  masterInput.addEventListener('change', async e => {
-    // Καθαρισμός UI
-    masterDrop.classList.remove('error','loaded');
-    masterFileName.textContent = '';
-    clearPreview();
-
-    const file = e.target.files[0] || null;
-    state.files.master = null;
-    if (!file) return;
-
-    // Αποκλεισμός INFO.xlsx
-    if (getBaseName(file).toUpperCase() === 'INFO') {
-      masterDrop.classList.add('error');
-      showStatus(`Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ.`, true);
+    if (getBaseName(state.files.info).toUpperCase() !== 'INFO') {
+      showError(`Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls`, infoDrop);
       return;
     }
 
-    // Έλεγχος extension
-    if (!isValidExcel(file)) {
-      masterDrop.classList.add('error');
-      showStatus(`Μη έγκυρος τύπος αρχείου: ${file.name}`, true);
-      return;
-    }
+    const sheetsM = wbM.worksheets.map(ws => ws.name);
+    const sheetsI = wbI.worksheets.map(ws => ws.name);
+    preview.innerHTML = `
+      <h2>Έλεγχος ΕΠΙΤΥΧΙΑ</h2>
+      <p><strong>Πελάτες sheets:</strong> ${sheetsM.join(', ')}</p>
+      <p><strong>INFO sheets:</strong> ${sheetsI.join(', ')}</p>
+    `;
+  } catch (err) {
+    showError(`Σφάλμα κατά την επεξεργασία: ${err.message}`);
+  }
+}
 
-    // Όλα ok
-    masterDrop.classList.add('loaded');
-    masterFileName.textContent = file.name;
-    state.files.master = file;
+masterInput.addEventListener('change', async e => {
+  clearBoxUI(masterDrop);
+  const file = e.target.files[0] || null;
+  state.files.master = null;
+  if (!file) return;
 
-    // Αν υπάρχει και INFO, ξεκινάμε orchestrate
-    if (state.files.info) {
-      orchestrate();
-    }
-  });
+  if (getBaseName(file).toUpperCase() === 'INFO') {
+    showError(`Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ.`, masterDrop);
+    return;
+  }
+  if (!isValidExcel(file)) {
+    showError(`Μη έγκυρος τύπος αρχείου: ${file.name}`, masterDrop);
+    return;
+  }
 
-  infoInput.addEventListener('change', e => {
-    // Καθαρισμός UI
-    infoDrop.classList.remove('error','loaded');
-    infoFileName.textContent = '';
-    clearPreview();
+  try {
+    const wb = await loadWorkbook(file);
+    validateMasterWorkbook(wb);
+  } catch (err) {
+    showError(err.message, masterDrop);
+    return;
+  }
 
-    const file = e.target.files[0] || null;
-    state.files.info = null;
-    if (!file) return;
+  masterDrop.classList.add('loaded');
+  masterFileName.textContent = file.name;
+  state.files.master = file;
+  tryLoadWorkbooks();
+});
 
-    // Έλεγχος INFO όνοματος & extension
-    if (!isValidExcel(file) || getBaseName(file).toUpperCase() !== 'INFO') {
-      infoDrop.classList.add('error');
-      showStatus(`Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls`, true);
-      return;
-    }
+infoInput.addEventListener('change', async e => {
+  clearBoxUI(infoDrop);
+  const file = e.target.files[0] || null;
+  state.files.info = null;
+  if (!file) return;
 
-    // Όλα ok
-    infoDrop.classList.add('loaded');
-    infoFileName.textContent = file.name;
-    state.files.info = file;
+  if (!isValidExcel(file) || getBaseName(file).toUpperCase() !== 'INFO') {
+    showError(`Το INFO αρχείο πρέπει να ονομάζεται INFO.xlsx ή INFO.xls`, infoDrop);
+    return;
+  }
 
-    // Αν υπάρχει και master, ξεκινάμε orchestrate
-    if (state.files.master) {
-      orchestrate();
-    }
-  });
-
-  // Initialize preview
-  clearPreview();
+  infoDrop.classList.add('loaded');
+  infoFileName.textContent = file.name;
+  state.files.info = file;
+  tryLoadWorkbooks();
 });
