@@ -14,3 +14,15 @@
   margin: 0 auto 2rem;
   max-width: 800px;
 }
+.actions {
+  max-width: 800px;
+  margin: 0 auto 1.5rem;
+  text-align: center;
+}
+#report {
+  max-width: 800px;
+  margin: 0 auto 2rem;
+}
+#report:empty {
+  display: none;
+}

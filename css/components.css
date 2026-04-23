@@ -35,3 +35,47 @@
   font-size: 0.8rem;
   color: #555;
 }
+
+.btn {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.65rem 1.4rem;
+  border: 1px solid #4caf50;
+  background: #4caf50;
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+.btn:hover:not(:disabled) {
+  background: #43a047;
+  border-color: #43a047;
+}
+.btn:disabled {
+  background: #ccc;
+  border-color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.report-card {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 1rem 1.25rem;
+}
+.report-card h3 {
+  margin: 0 0 0.5rem;
+  font-weight: normal;
+}
+.report-card details {
+  margin-top: 0.5rem;
+}
+.report-card summary {
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.report-card ul {
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  font-size: 0.9rem;
+  color: #444;
+}

@@ -2,6 +2,8 @@
 
 import { loadWorkbook } from './loader.js';
 import { validateMasterWorkbook } from './validator.js';
+import { unmergeAndClean } from './unmergeClean.js';
+import { validateInfoReplaceSheet, applyStreetReplacements } from './streetReplace.js';
 
 const masterInput    = document.getElementById('masterInput');
 const infoInput      = document.getElementById('infoInput');
@@ -10,6 +12,8 @@ const infoDrop       = document.getElementById('infoDrop');
 const masterFileName = document.getElementById('masterFileName');
 const infoFileName   = document.getElementById('infoFileName');
 const preview        = document.getElementById('preview');
+const exportBtn      = document.getElementById('exportBtn');
+const report         = document.getElementById('report');
 
 const state = {
   files: { master: null, info: null },
@@ -44,6 +48,7 @@ function showError(msg, box) {
     `<p style="color:red; margin:0;">${errLine}</p>` +
     `<p style="color:#555; margin:0 0 1rem;">${reqLine}</p>`;
   if (box) box.classList.add('error');
+  if (typeof disableExport === 'function') disableExport();
 }
 
 function clearBoxUI(box) {
@@ -51,7 +56,12 @@ function clearBoxUI(box) {
   if (box === masterDrop) masterFileName.textContent = '';
   if (box === infoDrop)   infoFileName.textContent   = '';
   preview.innerHTML = `<p>Ονόματα φύλλων θα εμφανιστούν εδώ μόλις ολοκληρωθεί ο έλεγχος.</p>`;
+  disableExport();
+  if (report) report.innerHTML = '';
 }
+
+function enableExport()  { if (exportBtn) exportBtn.disabled = false; }
+function disableExport() { if (exportBtn) exportBtn.disabled = true;  }
 
 async function tryLoadWorkbooks() {
   if (!state.files.master || !state.files.info) return;
@@ -68,6 +78,14 @@ async function tryLoadWorkbooks() {
       return;
     }
 
+    // Έλεγχος ότι το INFO έχει το σωστό φύλλο "Street Name Replace" με τις 4 στήλες.
+    try {
+      validateInfoReplaceSheet(wbI);
+    } catch (err) {
+      showError(err.message, infoDrop);
+      return;
+    }
+
     const sheetsM = wbM.worksheets.map(ws => ws.name);
     const sheetsI = wbI.worksheets.map(ws => ws.name);
     preview.innerHTML = `
@@ -75,6 +93,7 @@ async function tryLoadWorkbooks() {
       <p><strong>Πελάτες sheets:</strong> ${sheetsM.join(', ')}</p>
       <p><strong>INFO sheets:</strong> ${sheetsI.join(', ')}</p>
     `;
+    enableExport();
   } catch (err) {
     showError(`Σφάλμα κατά την επεξεργασία: ${err.message}`);
   }
@@ -125,3 +144,64 @@ infoInput.addEventListener('change', async e => {
   state.files.info = file;
   tryLoadWorkbooks();
 });
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderReport({ totalChanges, rulesTotal, rulesUsed, warnings, unused }) {
+  const lines = [];
+  lines.push(`<div class="report-card">`);
+  lines.push(`<h3>Αποτελέσματα αντικαταστάσεων</h3>`);
+  lines.push(`<p><strong>Κανόνες:</strong> ${rulesUsed} / ${rulesTotal} εφαρμόστηκαν · ` +
+             `<strong>Αλλαγές γραμμών:</strong> ${totalChanges}</p>`);
+  if (warnings.length) {
+    lines.push(`<details open><summary style="color:#b26a00"><strong>Προειδοποιήσεις (${warnings.length})</strong></summary><ul>` +
+      warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('') + `</ul></details>`);
+  }
+  if (unused.length) {
+    lines.push(`<details><summary style="color:#555"><strong>Κανόνες χωρίς match (${unused.length})</strong></summary><ul>` +
+      unused.map(u => `<li>${escapeHtml(u)}</li>`).join('') + `</ul></details>`);
+  }
+  lines.push(`</div>`);
+  report.innerHTML = lines.join('');
+}
+
+async function handleExport() {
+  const wbM = state.context.workbookMaster;
+  const wbI = state.context.workbookInfo;
+  if (!wbM || !wbI) return;
+
+  exportBtn.disabled = true;
+  const origLabel = exportBtn.textContent;
+  exportBtn.textContent = 'Επεξεργασία…';
+  try {
+    // Καθαρίζουμε το master (unmerge + trim/UPPERCASE) ώστε η σύγκριση να είναι συνεπής.
+    unmergeAndClean(wbM);
+
+    const result = applyStreetReplacements(wbM, wbI);
+    renderReport(result);
+
+    const buffer = await wbM.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const origName = state.files.master ? getBaseName(state.files.master) : 'export';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${origName}_updated.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showError(`Σφάλμα κατά το export: ${err.message}`);
+  } finally {
+    exportBtn.textContent = origLabel;
+    exportBtn.disabled = false;
+  }
+}
+
+exportBtn.addEventListener('click', handleExport);

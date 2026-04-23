@@ -1,39 +1,3478 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="el">
 <head>
-  <meta charset="UTF-8">
-  <title>Excel Loader & Validator</title>
-  <link rel="stylesheet" href="css/base.css">
-  <link rel="stylesheet" href="css/layout.css">
-  <link rel="stylesheet" href="css/components.css">
+  <meta charset="utf-8" />
+  <title>Excel Loader Validator Preview — Raw Untouched, Final Processed — Horizontal Scroll (No Preview Buttons)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { --bg:#f7f7f7; --card:#fff; --accent:#4CAF50; --err:#f44336; --btn:#1976d2; --btn-fg:#fff; }
+    body { font-family: Arial, Helvetica, sans-serif; margin: 1.2rem; background: var(--bg); color:#222 }
+    h1 { text-align:center; margin-bottom:0.6rem }
+    .grid { display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; margin-bottom:0.6rem }
+    .upload-box { border:2px dashed #aaa; background:var(--card); padding:0.8rem; width:280px; text-align:center; position:relative; cursor:pointer; transition:background .2s, border-color .2s; }
+    .upload-box.loaded { background:#e9fff0; border-color:var(--accent) }
+    .upload-box.error { background:#fff0f0; border-color:var(--err) }
+    .upload-box input { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer }
+    .hint { font-size:0.85rem; color:#555; margin-top:0.35rem }
+    .file-name { margin-top:0.4rem; font-size:0.85rem; word-break:break-all }
+    #controls { display:flex; gap:0.5rem; justify-content:center; margin-bottom:0.6rem; flex-wrap:wrap }
+    button { padding:8px 10px; font-size:13px; cursor:pointer; border-radius:4px; border:none; background:var(--btn); color:var(--btn-fg) }
+    button.ghost { background:transparent; color:var(--btn); border:1px solid var(--btn) }
+    #previewFinalWrap { position:relative; margin-bottom:1rem; }
+    .h-scroll { overflow:auto; white-space:nowrap; border:1px solid #ddd; background:var(--card); padding:0.5rem; }
+    .h-scroll > .sheet-block { display:inline-block; vertical-align:top; white-space:normal; margin-right:12px; min-width:640px; } 
+    table { border-collapse:collapse; margin-top:0.2rem; overflow:auto; display:table; min-width: max-content; }
+    th, td { border:1px solid #ccc; padding:6px; text-align:left; vertical-align:top; background:transparent }
+    .sheet-block { border:1px solid #eee; padding:8px; border-radius:6px; background:#fff }
+    .sheet-title { font-weight:700; margin:0 0 6px 0; display:flex; gap:8px; align-items:center }
+  .scroll-btn { width:36px; height:36px; border-radius:18px; background:rgba(0,0,0,0.6); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:10; margin:0 8px; box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+    #finalScrollBtnsWrap {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 0;
+      pointer-events: none;
+      z-index: 20;
+    }
+    #finalScrollLeft, #finalScrollRight {
+      position: absolute;
+      top: 0;
+      pointer-events: auto;
+    }
+    #finalScrollLeft {
+      left: 8px;
+      /* μπλε κύκλος: λίγο μέσα από το αριστερό άκρο του preview */
+    }
+    #finalScrollRight {
+      right: 8px;
+      /* κόκκινος κύκλος: λίγο μέσα από το δεξί άκρο του preview */
+    }
+  #finalScrollBtnsWrap .scroll-btn { pointer-events:auto; }
+    .preview-label { position:absolute; left:50%; transform:translateX(-50%); top:8px; font-weight:600; color:#333; background:transparent; z-index:5 }
+    .meta { font-size:0.85rem; color:#666 }
+    .note { font-size:0.9rem; color:#333; text-align:center }
+    .topbar { display:flex; gap:1rem; justify-content:center; margin-top:0.45rem }
+    .small { font-size:0.85rem; color:#444 }
+    .status { font-size:0.9rem; color:#006; margin-left:8px }
+    .busy { color:#f39c12 }
+    @media (max-width:800px) {
+      .h-scroll > .sheet-block { min-width:480px }
+      table { font-size:13px }
+    }
+  </style>
 </head>
 <body>
-  <h2>v2</h2>
-  <h1>1️⃣ Loader & Validator Module</h1>
+  <h1>Πελάτες & Πρακτορεία Ημέρας</h1>
 
-  <div class="upload-container">
-    <div class="upload-box" id="masterDrop">
-      <p>Εισάγετε EXCEL με πελάτες Ημέρας</p>
-      <div class="hint">Κωδ.Πελάτη, Συνεργάτης, Οδός • Όχι INFO.xlsx</div>
-      <input type="file" id="masterInput" accept=".xlsx,.xls" />
+  <div class="grid" role="region" aria-label="upload controls">
+    <div id="masterDrop" class="upload-box" title="Εισάγετε EXCEL με πελάτες Ημέρας">
+      <strong>Εισάγετε EXCEL με πελάτες Ημέρας</strong>
+      <div class="hint">Υποχρεωτικές στήλες: <strong>Κωδ.Πελάτη</strong>, <strong>Συνεργάτης</strong>, <strong>Οδός</strong></div>
+      <input id="masterInput" type="file" accept=".xlsx,.xls" />
       <div class="file-name" id="masterFileName"></div>
     </div>
 
-    <div class="upload-box" id="infoDrop">
-      <p>Εισάγετε INFO EXCEL</p>
-      <div class="hint">Όνομα αρχείου: INFO.xlsx</div>
-      <input type="file" id="infoInput" accept=".xlsx,.xls" />
+    <div id="infoDrop" class="upload-box" title="Εισάγετε το INFO EXCEL">
+      <strong>Εισάγετε το INFO EXCEL</strong>
+      <div class="hint">Απαιτείται όνομα αρχείου: <strong>INFO.xlsx</strong> ή <strong>INFO.xls</strong></div>
+      <input id="infoInput" type="file" accept=".xlsx,.xls" />
       <div class="file-name" id="infoFileName"></div>
     </div>
   </div>
 
-  <div id="preview">
-    <p>Επέλεξε δύο έγκυρα αρχεία για να φορτωθούν.</p>
+  <div id="controls">
+    <button id="btnClear" class="ghost">Clear</button>
+    <span class="status" id="opStatus"></span>
   </div>
 
-  <!-- ExcelJS CDN -->
+  <div id="previewFinalWrap">
+    <div class="preview-label">Preview Final (processed)</div>
+    <div id="previewFinal" class="h-scroll" aria-live="polite" role="region" aria-label="preview final"></div>
+  </div>
+
+  <div class="topbar" style="margin-top:0.6rem">
+    <div class="small">Βιβλιοθήκη: <strong>exceljs</strong> (browser)</div>
+  </div>
+
+  <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;z-index:99999;">
+    <div style="background:#fff;padding:1rem;border-radius:6px;max-width:520px;margin:auto;opacity:1;">
+      <h3 id="modalTitle">Προειδοποίηση</h3>
+      <div id="modalBody" class="meta"></div>
+      <div style="text-align:right;margin-top:0.6rem"><button id="modalOk" class="ghost">ΟΚ</button></div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js"></script>
-  <!-- Main module -->
-  <script type="module" src="js/main.js"></script>
+  <script>
+    // --- Utility: normalize for codes, partners, streets (NFD, remove diacritics, spaces, lowercase) ---
+    function normalize(val) {
+      return (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+    }
+    function toPlainString(v) {
+      if (v === undefined || v === null) return '';
+      if (typeof v === 'string') {
+        return /\[object Object]/i.test(v) ? '' : v;
+      }
+      try {
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (typeof v === 'object') {
+          if (Array.isArray(v.richText)) return v.richText.map(p => p.text).join('');
+          if ('text' in v && v.text !== undefined && v.text !== null) return String(v.text);
+          if ('result' in v && v.result !== undefined && v.result !== null) return String(v.result);
+          if ('value' in v && v.value !== undefined && v.value !== null) return toPlainString(v.value);
+          if (Array.isArray(v)) return v.map(toPlainString).join('');
+          for (const key in v) {
+            if (!Object.prototype.hasOwnProperty.call(v, key)) continue;
+            const inner = v[key];
+            if (inner === undefined || inner === null) continue;
+            if (typeof inner === 'string' && inner.trim() !== '') return inner;
+            if (typeof inner === 'number') return String(inner);
+            if (Array.isArray(inner.richText)) return inner.richText.map(r => r.text).join('');
+          }
+          try { return JSON.stringify(v); } catch (err) { return ''; }
+        }
+      } catch (e) {
+        return '';
+      }
+      return '';
+    }
+
+    const state = {
+      files: { master: null, info: null },
+      context: { workbookMaster: null, workbookInfo: null, processedMaster: null },
+      visibleRows: new Map(),
+      autoProcessing: false
+    };
+
+    const masterInput = document.getElementById('masterInput');
+    const infoInput = document.getElementById('infoInput');
+    const masterDrop = document.getElementById('masterDrop');
+    const infoDrop = document.getElementById('infoDrop');
+    const masterFileName = document.getElementById('masterFileName');
+    const infoFileName = document.getElementById('infoFileName');
+    const previewFinal = document.getElementById('previewFinal');
+    const previewFinalWrap = document.getElementById('previewFinalWrap');
+    const btnClear = document.getElementById('btnClear');
+    const opStatus = document.getElementById('opStatus');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalBody = document.getElementById('modalBody');
+    const modalOk = document.getElementById('modalOk');
+
+    const requiredCols = ['Κωδ.Πελάτη','Συνεργάτης','Οδός'];
+    const RAW_INITIAL_ROWS = 100;
+    const RAW_STEP_ROWS = 100;
+    const RAW_MAX_COLS = 80;
+    const FINAL_INITIAL_ROWS = 500;
+    const FINAL_MAX_COLS = 80;
+    const SCROLL_STEP_PX = 400;
+    const SCROLL_SMOOTH = true;
+
+    function showModal(title, html) {
+      modalTitle.textContent = title;
+      modalBody.innerHTML = html;
+      modal.style.display = 'flex';
+    }
+    function hideModal() { modal.style.display = 'none'; }
+    modalOk.addEventListener('click', hideModal);
+
+    function getExt(file) { const idx = file.name.lastIndexOf('.'); return idx>-1 ? file.name.slice(idx+1).toLowerCase() : ''; }
+    function getBaseName(file) { const idx = file.name.lastIndexOf('.'); return idx>-1 ? file.name.slice(0,idx) : file.name; }
+    function isValidExcel(file) { const ext = getExt(file); return ext==='xlsx' || ext==='xls'; }
+    function setStatus(txt, busy=false) {
+      opStatus.textContent = txt;
+      opStatus.classList.toggle('busy', !!busy);
+      if (!busy) setTimeout(()=>{ if (opStatus.textContent === txt) opStatus.textContent=''; }, 4000);
+    }
+    function clearBoxUI(box) {
+      box.classList.remove('error','loaded');
+      if (box===masterDrop) masterFileName.textContent='';
+      if (box===infoDrop) infoFileName.textContent='';
+      previewFinal.innerHTML = `<p class="note">Το παράθυρο <strong>Preview Final</strong> θα εμφανιστεί αυτόματα μετά το φορτωμα και το auto-clean.</p>`;
+      state.visibleRows.clear();
+    }
+
+    function argbToHex(argb) { return '#' + (argb || '').slice(2); }
+    function colLetterToNumber(str) {
+      let num = 0;
+      for (let ch of (str || '')) num = num * 26 + (ch.charCodeAt(0) - 64);
+      return num;
+    }
+    function getExcelValueType(name, fallback) {
+      const vt = window.ExcelJS && window.ExcelJS.ValueType;
+      if (vt && Object.prototype.hasOwnProperty.call(vt, name) && typeof vt[name] === 'number') {
+        return vt[name];
+      }
+      return fallback;
+    }
+    // Defensive helpers for Excel corruption cases
+    function sanitizeWorkbookStyles(workbook) {
+      try {
+        if (!workbook || !workbook.styles || !workbook.styles.model || !workbook.styles.model.cellXfs) return;
+        const xf = workbook.styles.model.cellXfs;
+        const xfCount = Array.isArray(xf) ? xf.length : (xf.count || 0);
+        if (!xfCount) return;
+        const maxIndex = xfCount - 1;
+        workbook.eachSheet(sheet => {
+          sheet.eachRow(row => {
+            row.eachCell(cell => {
+              if (!cell) return;
+              const styleId = (cell.style && typeof cell.styleId === 'number') ? cell.styleId : (typeof cell.style === 'number' ? cell.style : undefined);
+              if (typeof styleId === 'number' && styleId > maxIndex) {
+                console.warn('[SANITIZE] cell styleId out of range, resetting', { sheet: sheet.name, row: row.number, col: cell.col, styleId: cell.styleId, maxIndex });
+                cell.styleId = 0;
+              }
+              if (cell.numFmt && typeof cell.numFmt === 'number' && cell.numFmt > maxIndex) cell.numFmt = '@';
+            });
+          });
+        });
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeWorkbookStyles failed', err);
+      }
+    }
+    function sanitizeWorkbookFonts(workbook) {
+      try {
+        const fontArrays = [];
+        const stylesModelFonts = workbook && workbook.styles && workbook.styles.model && Array.isArray(workbook.styles.model.fonts)
+          ? workbook.styles.model.fonts
+          : null;
+        if (stylesModelFonts) fontArrays.push(stylesModelFonts);
+
+        const modelFonts = workbook && workbook.model && workbook.model.styles && Array.isArray(workbook.model.styles.fonts)
+          ? workbook.model.styles.fonts
+          : null;
+        if (modelFonts && modelFonts !== stylesModelFonts) fontArrays.push(modelFonts);
+
+        if (!fontArrays.length) return;
+
+        const normalizeName = (font) => {
+          if (!font) return '';
+          const raw = font.name;
+          if (typeof raw === 'string') return raw.trim();
+          if (raw && typeof raw === 'object') {
+            if (typeof raw.name === 'string') return raw.name.trim();
+            if (typeof raw.val === 'string') return raw.val.trim();
+            if (typeof raw.text === 'string') return raw.text.trim();
+          }
+          if (typeof font.familyname === 'string') return font.familyname.trim();
+          return '';
+        };
+
+        const normalizeSize = (font) => {
+          if (!font) return null;
+          if (typeof font.size === 'number') return font.size;
+          if (font.size && typeof font.size === 'object') {
+            if (typeof font.size.size === 'number') return font.size.size;
+            if (typeof font.size.val === 'number') return font.size.val;
+            if (typeof font.size.value === 'number') return font.size.value;
+          }
+          if (typeof font.sz === 'number') return font.sz;
+          if (font.sz && typeof font.sz === 'object') {
+            if (typeof font.sz.val === 'number') return font.sz.val;
+            if (typeof font.sz.value === 'number') return font.sz.value;
+          }
+          if (typeof font.fontSize === 'number') return font.fontSize;
+          const parsed = Number(font.size);
+          if (Number.isFinite(parsed)) return parsed;
+          return null;
+        };
+
+        const ensureFontShape = (font) => {
+          if (!font || typeof font !== 'object') return {
+            name: 'Calibri',
+            family: 2,
+            size: 11,
+            color: { theme: 1 },
+            scheme: 'minor'
+          };
+
+          const safeFont = font;
+
+          let safeName = normalizeName(safeFont);
+          if (!safeName) safeName = 'Calibri';
+          safeFont.name = safeName;
+
+          let safeSize = normalizeSize(safeFont);
+          if (safeSize == null || !Number.isFinite(safeSize) || safeSize <= 0) safeSize = 11;
+          safeFont.size = safeSize;
+
+          if (safeFont.sz !== undefined) delete safeFont.sz;
+          if (safeFont.fontSize !== undefined) delete safeFont.fontSize;
+
+          if (typeof safeFont.family !== 'number' || safeFont.family <= 0) safeFont.family = 2;
+          if (!safeFont.color || typeof safeFont.color !== 'object') safeFont.color = { theme: 1 };
+          if (!safeFont.scheme) safeFont.scheme = 'minor';
+
+          return safeFont;
+        };
+
+        for (const fonts of fontArrays) {
+          if (!fonts.length) {
+            fonts.push({ name: 'Calibri', family: 2, size: 11, color: { theme: 1 }, scheme: 'minor' });
+            continue;
+          }
+          for (let i = 0; i < fonts.length; i++) {
+            fonts[i] = ensureFontShape(fonts[i]);
+          }
+          fonts[0] = ensureFontShape(fonts[0]);
+        }
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeWorkbookFonts failed', err);
+      }
+    }
+    function sanitizeSharedStrings(workbook) {
+      try {
+        if (!workbook || !workbook.sharedStrings || !Array.isArray(workbook.sharedStrings.values)) return;
+        const values = workbook.sharedStrings.values;
+        const maxIndex = values.length - 1;
+        const sharedStringType = getExcelValueType('SharedString', 7);
+        workbook.eachSheet(sheet => {
+          sheet.eachRow(row => {
+            row.eachCell(cell => {
+              if (cell && cell.type === sharedStringType) {
+                const idx = typeof cell.value === 'number' ? cell.value : cell.value && cell.value.id;
+                if (typeof idx === 'number' && (idx < 0 || idx > maxIndex)) {
+                  console.warn('[SANITIZE] sharedString index out of range, converting to inline string', { sheet: sheet.name, row: row.number, col: cell.col, idx, maxIndex });
+                  const text = toPlainString(cell.text || cell.value);
+                  cell.value = text || '';
+                }
+              }
+            });
+          });
+        });
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeSharedStrings failed', err);
+      }
+    }
+    function sanitizeWorksheetDimensions(sheet) {
+      if (!sheet) return;
+      try {
+        const { dimension } = sheet;
+        if (!dimension || !dimension.model) return;
+        const dimRef = dimension.model.ref;
+        if (!dimRef) return;
+        const [startRef, endRef] = dimRef.split(':');
+        if (!endRef) return;
+        const endColLetters = endRef.replace(/\d+/g, '') || 'A';
+        const endRowDigits = Number(endRef.replace(/[^\d]/g, '')) || sheet.rowCount;
+        let maxCol = colLetterToNumber(endColLetters);
+        let maxRow = endRowDigits;
+        sheet.eachRow(row => {
+          maxRow = Math.max(maxRow, row.number);
+          row.eachCell({ includeEmpty: false }, cell => {
+            maxCol = Math.max(maxCol, cell.col);
+          });
+        });
+        const newRef = `A1:${columnNumberToLetter(Math.max(1, maxCol))}${Math.max(1, maxRow)}`;
+        if (newRef !== dimRef) {
+          console.warn('[SANITIZE] adjusting worksheet dimension', { sheet: sheet.name, from: dimRef, to: newRef });
+          sheet.model.dimension.ref = newRef;
+        }
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeWorksheetDimensions failed', err);
+      }
+    }
+    function columnNumberToLetter(num) {
+      let col = '';
+      num = Math.max(1, Math.floor(num));
+      while (num > 0) {
+        const rem = (num - 1) % 26;
+        col = String.fromCharCode(65 + rem) + col;
+        num = Math.floor((num - 1) / 26);
+      }
+      return col || 'A';
+    }
+    function sanitizeCellFont(cell) {
+      if (!cell || !cell.font) return;
+      const font = cell.font;
+      if (!font.name || typeof font.name !== 'string' || !font.name.trim()) {
+        font.name = 'Segoe UI';
+      }
+      if (font.size && typeof font.size !== 'number') {
+        const parsed = Number(font.size);
+        font.size = Number.isFinite(parsed) && parsed > 0 ? parsed : 11;
+      }
+      cell.font = { ...font, name: font.name, size: font.size || 11 };
+    }
+    function sanitizeWorksheetMergeCells(sheet) {
+      if (!sheet || !Array.isArray(sheet._merges)) return;
+      try {
+        const validMerges = [];
+        const colCount = sheet.columnCount || 0;
+        const rowCount = sheet.rowCount || 0;
+        for (const merge of sheet._merges) {
+          if (!merge || !merge.top || !merge.left) continue;
+          if (merge.left < 1 || merge.top < 1) continue;
+          if ((colCount && merge.right > colCount) || (rowCount && merge.bottom > rowCount)) {
+            console.warn('[SANITIZE] dropping merge outside bounds', { sheet: sheet.name, merge, colCount, rowCount });
+            continue;
+          }
+          validMerges.push(merge);
+        }
+        if (validMerges.length !== sheet._merges.length) {
+          sheet._merges = validMerges;
+        }
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeWorksheetMergeCells failed', err);
+      }
+    }
+    function parseCellRef(ref) {
+      if (!ref) return null;
+      const colLetters = ref.replace(/\d+/g, '');
+      const rowDigits = ref.replace(/[^\d]/g, '');
+      if (!colLetters || !rowDigits) return null;
+      return { col: colLetterToNumber(colLetters), row: Number(rowDigits) };
+    }
+    function sanitizeWorksheetHyperlinks(sheet) {
+      if (!sheet || !sheet.model || !Array.isArray(sheet.model.hyperlinks) || !sheet.model.hyperlinks.length) return;
+      try {
+        const dim = sheet && sheet.model && sheet.model.dimension ? sheet.model.dimension.ref : null;
+        let maxCol = sheet.columnCount || 0;
+        let maxRow = sheet.rowCount || 0;
+        if (dim) {
+          const [, endRef] = dim.split(':');
+          if (endRef) {
+            const parsed = parseCellRef(endRef);
+            if (parsed) {
+              maxCol = Math.max(maxCol, parsed.col);
+              maxRow = Math.max(maxRow, parsed.row);
+            }
+          }
+        }
+        const valid = [];
+        for (const link of sheet.model.hyperlinks) {
+          if (!link || !link.ref) continue;
+          const refs = link.ref.split(':');
+          const cells = refs.map(parseCellRef).filter(Boolean);
+          if (!cells.length) {
+            console.warn('[SANITIZE] removing hyperlink with invalid ref', { sheet: sheet.name, link });
+            continue;
+          }
+          const withinBounds = cells.every(({ col, row }) => col >= 1 && row >= 1 && (!maxCol || col <= maxCol) && (!maxRow || row <= maxRow));
+          if (!withinBounds) {
+            console.warn('[SANITIZE] removing hyperlink outside bounds', { sheet: sheet.name, link, maxCol, maxRow });
+            continue;
+          }
+          valid.push(link);
+        }
+        sheet.model.hyperlinks = valid;
+      } catch (err) {
+        console.error('[SANITIZE] sanitizeWorksheetHyperlinks failed', err);
+      }
+    }
+    function sanitizeWorksheetPageSetup(sheet) {
+      if (!sheet || !sheet.pageSetup) return;
+      const ps = sheet.pageSetup;
+      const badValues = [undefined, null, '', 4294967295];
+      const cleanup = key => {
+        if (key in ps) {
+          const val = ps[key];
+          if (badValues.includes(val) || (typeof val === 'number' && (!Number.isFinite(val) || val <= 0))) {
+            console.warn('[SANITIZE] removing invalid pageSetup value', { sheet: sheet.name, key, value: val });
+            delete ps[key];
+          }
+        }
+      };
+      cleanup('horizontalDpi');
+      cleanup('verticalDpi');
+      if (!('header' in ps) || typeof ps.header !== 'number' || ps.header < 0) ps.header = 0.3;
+      if (!('footer' in ps) || typeof ps.footer !== 'number' || ps.footer < 0) ps.footer = 0.3;
+    }
+
+    function normalizeHeaderLabel(lbl) {
+      if (lbl === undefined || lbl === null) return '';
+      return String(lbl).trim().replace(/\u00A0/g,' ').normalize();
+    }
+
+    async function processMasterToCopy(masterWb, infoWb) {
+  // --- ΕΛΕΓΧΟΣ SPAR για ΜΕ BAZAAR ---
+  // Declare praktoreiaSheet for use throughout
+  let praktoreiaSheet = null;
+      // Βρες το φύλλο SPAR
+      const sparSheet = infoWb.getWorksheet('SPAR');
+      let sparCodeToRegion = new Map();
+      if (sparSheet) {
+  // console.log('[DEBUG] Βρέθηκε φύλλο SPAR:', sparSheet.name, 'rowCount:', sparSheet.rowCount);
+        // Σάρωσε τις πρώτες 5 γραμμές για να βρεις header row με "Κωδ.Πελάτη" και "Περιοχή"
+        let sparHeaderRow = null;
+        let sparHeaderVals = [];
+        let sparHeaderRowNum = -1;
+        for (let r = 1; r <= Math.min(5, sparSheet.rowCount); r++) {
+          let row = sparSheet.getRow(r);
+          let vals = [];
+          let foundCode = false, foundRegion = false;
+          for (let c = 1; c <= Math.max(row.cellCount, 20); c++) {
+            let cell = row.getCell(c);
+            let val = toPlainString(cell && cell.value);
+            if (!val) { vals.push(''); continue; }
+            vals.push(val);
+            if (val.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη')) foundCode = true;
+            if (val.replace(/\s/g, '').toLowerCase().includes('περιοχή')) foundRegion = true;
+          }
+          if (foundCode && foundRegion) {
+            sparHeaderRow = row;
+            sparHeaderVals = vals;
+            sparHeaderRowNum = r;
+            break;
+          }
+        }
+        if (!sparHeaderRow) {
+          // console.log('[DEBUG] Δεν βρέθηκε header row με "Κωδ.Πελάτη" και "Περιοχή" στις πρώτες 5 γραμμές του SPAR.');
+        } else {
+          // console.log('[DEBUG] SPAR header row found at row', sparHeaderRowNum, 'values:', sparHeaderVals);
+        }
+        // Βρες τα indexes των στηλών "Κωδ.Πελάτη" και "Περιοχή"
+        let idxSparCode = -1, idxSparRegion = -1;
+        for (let i = 0; i < sparHeaderVals.length; i++) {
+          const x = sparHeaderVals[i];
+          if (x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη')) idxSparCode = i + 1;
+          if (x && x.replace(/\s/g, '').toLowerCase().includes('περιοχή')) idxSparRegion = i + 1;
+        }
+  // console.log('[DEBUG] idxSparCode:', idxSparCode, 'idxSparRegion:', idxSparRegion);
+        // Ξεκίνα από τη γραμμή μετά το header
+        const startRow = sparHeaderRowNum > 0 ? sparHeaderRowNum + 1 : 2;
+        for (let i = startRow; i <= sparSheet.rowCount; i++) {
+          const row = sparSheet.getRow(i);
+          let code = idxSparCode > -1 && row.getCell(idxSparCode).value ? toPlainString(row.getCell(idxSparCode).value).trim() : '';
+          let region = idxSparRegion > -1 && row.getCell(idxSparRegion).value ? toPlainString(row.getCell(idxSparRegion).value).trim() : '';
+          if (code && region) {
+            sparCodeToRegion.set(normalize(code), region);
+            // console.log('[DEBUG] Προστέθηκε SPAR code:', code, '| normalized:', normalize(code), '| region:', region);
+          }
+        }
+  // console.log('[DEBUG] Τελικός sparCodeToRegion map:', Array.from(sparCodeToRegion.entries()));
+      } else {
+  // console.log('[DEBUG] Δεν βρέθηκε φύλλο SPAR στο INFO.');
+      }
+      // --- ΕΛΕΓΧΟΣ RETAIL για ΤΡ ---
+      // Βρες το φύλλο RETAIL
+      const retailSheet = infoWb.getWorksheet('RETAIL');
+      let retailCodes = new Set();
+      if (retailSheet) {
+  // console.log('[DEBUG] Βρέθηκε φύλλο RETAIL:', retailSheet.name, 'rowCount:', retailSheet.rowCount);
+        // Σάρωσε τις πρώτες 5 γραμμές για να βρεις header row με "Κωδ.Πελάτη"
+        let retailHeaderRow = null;
+        let retailHeaderVals = [];
+        let headerRowNum = -1;
+        for (let r = 1; r <= Math.min(5, retailSheet.rowCount); r++) {
+          let row = retailSheet.getRow(r);
+          let vals = [];
+          let found = false;
+          // Σάρωσε μέχρι 20 στήλες για να βρεις το header
+          for (let c = 1; c <= Math.max(row.cellCount, 20); c++) {
+            let cell = row.getCell(c);
+            let val = toPlainString(cell && cell.value);
+            if (!val) { vals.push(''); continue; }
+            vals.push(val);
+            if (val.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη')) found = true;
+          }
+          if (found) {
+            retailHeaderRow = row;
+            retailHeaderVals = vals;
+            headerRowNum = r;
+            break;
+          }
+        }
+        if (!retailHeaderRow) {
+          // console.log('[DEBUG] Δεν βρέθηκε header row με "Κωδ.Πελάτη" στις πρώτες 5 γραμμές του RETAIL.');
+        } else {
+          // console.log('[DEBUG] RETAIL header row found at row', headerRowNum, 'values:', retailHeaderVals);
+        }
+        // Βρες το index της στήλης "Κωδ.Πελάτη" (προσοχή: .getCell ξεκινάει από 1)
+        let idxRetailCode = -1;
+        for (let i = 0; i < retailHeaderVals.length; i++) {
+          const x = retailHeaderVals[i];
+          if (x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη')) {
+            idxRetailCode = i + 1; // getCell index
+            break;
+          }
+        }
+  // console.log('[DEBUG] idxRetailCode:', idxRetailCode);
+        // Ξεκίνα από τη γραμμή μετά το header
+        const startRow = headerRowNum > 0 ? headerRowNum + 1 : 2;
+        for (let i = startRow; i <= retailSheet.rowCount; i++) {
+          const row = retailSheet.getRow(i);
+          let code = idxRetailCode > -1 && row.getCell(idxRetailCode).value ? toPlainString(row.getCell(idxRetailCode).value).trim() : '';
+          if (code) {
+            retailCodes.add(normalize(code));
+            // console.log('[DEBUG] Προστέθηκε RETAIL code:', code, '| normalized:', normalize(code));
+          }
+        }
+  // console.log('[DEBUG] Τελικό retailCodes set:', Array.from(retailCodes));
+      } else {
+  // console.log('[DEBUG] Δεν βρέθηκε φύλλο RETAIL στο INFO.');
+      }
+      // Helper για normalization (trim, lowercase, χωρίς τόνους, χωρίς κενά)
+            // --- MERGE ΚΑΘΕΤΑ ΟΠΩΣ ΖΗΤΗΘΗΚΕ ---
+            // Ensure praktoreiaHeader is defined in this scope
+            let praktoreiaHeaderLocal = null;
+            if (window._lastPraktoreiaTempSheet && window._lastPraktoreiaTempSheet.getRow && window._lastPraktoreiaTempSheet.getRow(1)) {
+              praktoreiaHeaderLocal = ["ID_Παραγγελίας", ...window._lastPraktoreiaTempSheet.getRow(1).values.slice(1)];
+            } else if (praktoreiaSheet && praktoreiaSheet.getRow && praktoreiaSheet.getRow(2)) {
+              praktoreiaHeaderLocal = praktoreiaSheet.getRow(2).values.slice(1);
+            } else {
+              praktoreiaHeaderLocal = [];
+            }
+            function advNorm(val) {
+              return (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+            }
+            const headerNorms = praktoreiaHeaderLocal.map(advNorm);
+            const idxKodPelatiMerge = headerNorms.findIndex(x => x === 'κωδ.πελατη');
+            const idxOdosMerge = headerNorms.findIndex(x => x.includes('οδο'));
+            const idxPlusMerge = headerNorms.findIndex(x => x === '+');
+            if (idxKodPelatiMerge !== -1 && idxOdosMerge !== -1 && idxPlusMerge !== -1) {
+              if (!praktoreiaSheet) {
+                console.warn('[PRAKT MERGE] πρακτορεία sheet not available for vertical merges.');
+              } else {
+              // Δημιούργησε map: key = 'Κωδ. Πελατη' + 'Οδος', value = [row numbers]
+              const groupMap = new Map();
+              for (let r = 3; r <= praktoreiaSheet.rowCount; r++) { // ξεκίνα από 3 (1=ημερομηνία, 2=header)
+                const row = praktoreiaSheet.getRow(r);
+                let kod = toPlainString(row.getCell(idxKodPelatiMerge+1).value);
+                let odos = toPlainString(row.getCell(idxOdosMerge+1).value);
+                const key = advNorm(kod) + '|' + advNorm(odos);
+                if (!groupMap.has(key)) groupMap.set(key, []);
+                groupMap.get(key).push(r);
+              }
+              // Για κάθε ομάδα με πάνω από 1 row, κάνε merge από 'Κωδ. Πελατη' έως και '+'
+              for (const rows of groupMap.values()) {
+                if (rows.length < 2) continue;
+                const start = rows[0], end = rows[rows.length-1];
+                for (let c = idxKodPelatiMerge+1; c <= idxPlusMerge+1; c++) {
+                  praktoreiaSheet.mergeCells(start, c, end, c);
+                }
+              }
+              }
+            }
+
+            // --- BLACKLIST SHEET SETUP ---
+            const availableInfoSheets = infoWb.worksheets.map(ws => ws && ws.name ? String(ws.name) : '');
+            console.log('[BL DEBUG] INFO sheet names', availableInfoSheets);
+
+            let blSheet = infoWb.getWorksheet('BLACKLIST');
+            if (!blSheet) {
+              const targetName = 'blacklist';
+              blSheet = infoWb.worksheets.find(ws => {
+                const name = ws && ws.name ? String(ws.name).trim().toLowerCase().replace(/\s+/g, '') : '';
+                return name === targetName || name.includes(targetName);
+              }) || null;
+              if (blSheet) {
+                console.log('[BL DEBUG] Using fallback BLACKLIST sheet', blSheet.name);
+              } else {
+                console.warn('[BL DEBUG] BLACKLIST sheet not found');
+              }
+            }
+            const blEntries = [];
+            const blHeaderMap = {};
+
+            const greekToLatinMap = {
+              'Α':'a','α':'a','Ά':'a','ά':'a',
+              'Β':'b','β':'b',
+              'Γ':'g','γ':'g',
+              'Δ':'d','δ':'d',
+              'Ε':'e','ε':'e','Έ':'e','έ':'e',
+              'Ζ':'z','ζ':'z',
+              'Η':'i','η':'i','Ή':'i','ή':'i',
+              'Θ':'th','θ':'th',
+              'Ι':'i','ι':'i','Ί':'i','ί':'i','Ϊ':'i','ϊ':'i','ΐ':'i',
+              'Κ':'k','κ':'k',
+              'Λ':'l','λ':'l',
+              'Μ':'m','μ':'m',
+              'Ν':'n','ν':'n',
+              'Ξ':'x','ξ':'x',
+              'Ο':'o','ο':'o','Ό':'o','ό':'o',
+              'Π':'p','π':'p',
+              'Ρ':'r','ρ':'r',
+              'Σ':'s','σ':'s','ς':'s',
+              'Τ':'t','τ':'t',
+              'Υ':'y','υ':'y','Ύ':'y','ύ':'y','Ϋ':'y','ϋ':'y','ΰ':'y',
+              'Φ':'f','φ':'f',
+              'Χ':'ch','χ':'ch',
+              'Ψ':'ps','ψ':'ps',
+              'Ω':'o','ω':'o','Ώ':'o','ώ':'o'
+            };
+
+            function foldGreekToLatin(str) {
+              if (!str) return '';
+              let result = '';
+              for (const ch of str) {
+                result += greekToLatinMap[ch] !== undefined ? greekToLatinMap[ch] : ch;
+              }
+              return result;
+            }
+
+            function normalizeBLHeaderName(val) {
+              if (val === undefined || val === null) return '';
+              let raw = val;
+              if (typeof val === 'object') {
+                if (Array.isArray(val.richText)) {
+                  raw = val.richText.map(part => part.text).join('');
+                } else if ('text' in val && val.text !== undefined && val.text !== null) {
+                  raw = val.text;
+                } else if ('result' in val && val.result !== undefined && val.result !== null) {
+                  raw = val.result;
+                } else if ('value' in val && val.value !== undefined && val.value !== null) {
+                  raw = val.value;
+                } else {
+                  raw = '';
+                }
+              }
+              const str = String(raw).trim();
+              if (!str) return '';
+              const base = str
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/ς/g, 'σ');
+              const folded = foldGreekToLatin(base);
+              return folded
+                .replace(/[^a-z0-9]+/gi, '')
+                .toLowerCase();
+            }
+
+            function normalizeBLValue(val) {
+              if (val === undefined || val === null) return '';
+              let raw = val;
+              if (typeof val === 'object') {
+                if (Array.isArray(val.richText)) {
+                  raw = val.richText.map(part => part.text).join('');
+                } else if ('text' in val && val.text !== undefined && val.text !== null) {
+                  raw = val.text;
+                } else if ('result' in val && val.result !== undefined && val.result !== null) {
+                  raw = val.result;
+                } else if ('value' in val && val.value !== undefined && val.value !== null) {
+                  raw = val.value;
+                } else {
+                  raw = '';
+                }
+              }
+              const str = String(raw).trim();
+              if (!str) return '';
+              const base = str
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/ς/g, 'σ');
+              const folded = foldGreekToLatin(base);
+              return folded
+                .replace(/[^a-z0-9]+/gi, '')
+                .toLowerCase();
+            }
+
+            function getCellString(row, colNumber) {
+              if (!colNumber) return null;
+              const cell = row.getCell(colNumber);
+              if (!cell) return null;
+              let value = cell.value;
+              if (value === undefined || value === null) return null;
+              const str = toPlainString(value).trim();
+              return str ? str : null;
+            }
+
+            function getColumnByAliases(mapObj, aliases) {
+              for (const key of aliases) {
+                if (key && mapObj[key] !== undefined) return mapObj[key];
+              }
+              return null;
+            }
+
+            function extractPlainValue(val) {
+              if (val === undefined || val === null) return null;
+              const str = toPlainString(val).trim();
+              return str ? str : null;
+            }
+
+            // Global helper: robust plain-string extraction from various exceljs value shapes
+
+            const headerTargetAliases = {
+              code: [
+                normalizeBLHeaderName('Κωδ.Πελάτη'),
+                normalizeBLHeaderName('Κωδικός Πελάτης')
+              ],
+              partner: [
+                normalizeBLHeaderName('Συνεργάτης'),
+                normalizeBLHeaderName('Συνεργάτης/Μεταφορική')
+              ],
+              street: [
+                normalizeBLHeaderName('Οδός'),
+                normalizeBLHeaderName('Διεύθυνση'),
+                normalizeBLHeaderName('Διεύθυνση Μεταφορική')
+              ]
+            };
+
+            if (blSheet) {
+              console.log('[BL DEBUG] BLACKLIST rowCount', blSheet.rowCount);
+              const headerRow = blSheet.getRow(2);
+              if (headerRow) {
+                headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+                  const normName = normalizeBLHeaderName(cell.value);
+                  if (normName) blHeaderMap[normName] = colNumber;
+                });
+
+                console.log('[BL DEBUG] Header map', { ...blHeaderMap });
+
+                const codeCol = getColumnByAliases(blHeaderMap, headerTargetAliases.code);
+                const partnerCol = getColumnByAliases(blHeaderMap, headerTargetAliases.partner);
+                const streetCol = getColumnByAliases(blHeaderMap, headerTargetAliases.street);
+
+                const DATA_START_ROW = 3;
+                blSheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+                  if (rowNumber < DATA_START_ROW) return;
+                  const codeRaw = codeCol ? getCellString(row, codeCol) : null;
+                  const partnerRaw = partnerCol ? getCellString(row, partnerCol) : null;
+                  const streetRaw = streetCol ? getCellString(row, streetCol) : null;
+                  if (codeRaw || partnerRaw || streetRaw) {
+                    blEntries.push({
+                      code: codeRaw || null,
+                      partner: partnerRaw || null,
+                      street: streetRaw || null,
+                      normCode: normalizeBLValue(codeRaw),
+                      normPartner: normalizeBLValue(partnerRaw),
+                      normStreet: normalizeBLValue(streetRaw)
+                    });
+                  }
+                });
+
+                console.log('[BL DEBUG] Loaded entries', blEntries.length, blEntries.slice(0, 5));
+              }
+              else {
+                console.warn('[BL DEBUG] Header row 2 missing or empty in BLACKLIST sheet');
+              }
+            }
+
+      // Δημιούργησε νέο workbook και φύλλα
+      const ExcelJS = window.ExcelJS || (await import('exceljs'));
+      const newWb = new ExcelJS.Workbook();
+  const removedRowsLog = [];
+  const odosOnlyLog = [];
+
+      // Για κάθε φύλλο MASTER
+      masterWb.worksheets.forEach((ws) => {
+        // Βήμα 2: Unmerge όλα τα κελιά
+        if (ws.model && ws.model.merges) ws.model.merges = [];
+
+        // Εντοπισμός indexes για Κωδ.Πελάτη, Συνεργάτης, Οδός από το header του κάθε φύλλου MASTER
+        const headerRow = ws.getRow(1);
+  const headerVals = headerRow.values.map(x => (x ? String(x).trim() : ''));
+  const headerNorms = headerVals.map(normalize);
+  const normCode = normalize('Κωδ.Πελάτη');
+  const normPartner = normalize('Συνεργάτης');
+  const normStreet = normalize('Οδός');
+  const idxCode = headerNorms.findIndex(x => x === normCode);
+  const idxPartner = headerNorms.findIndex(x => x === normPartner);
+  const idxStreet = headerNorms.findIndex(x => x === normStreet);
+
+        // Βήμα 2: Διαγραφή γραμμών με κενό 'Κωδ.Πελάτη'
+        const rowsToKeep = [];
+        for (let i = 2; i <= ws.rowCount; i++) {
+          const row = ws.getRow(i);
+          const code = idxCode > -1 && row.getCell(idxCode).value ? toPlainString(row.getCell(idxCode).value).trim() : '';
+          if (code) rowsToKeep.push(row);
+        }
+
+        // Βήμα 3: Αφαίρεση διπλοτύπων με βάση 'Κωδ.Πελάτη' && 'Οδός'
+        const seen = new Set();
+        const dedupedRows = [];
+        for (const row of rowsToKeep) {
+          const code = idxCode > -1 && row.getCell(idxCode).value ? toPlainString(row.getCell(idxCode).value).trim() : '';
+          const street = idxStreet > -1 && row.getCell(idxStreet).value ? toPlainString(row.getCell(idxStreet).value).trim() : '';
+          const key = code + '||' + street;
+          if (!seen.has(key)) {
+            seen.add(key);
+            dedupedRows.push(row);
+          }
+        }
+
+        // Βήμα 4: Διαγραφή όλων των άλλων στηλών εκτός από 'Κωδ.Πελάτη', 'Συνεργάτης', 'Οδός'
+  const keepLabels = ['Κωδ.Πελάτη','Συνεργάτης','Οδός'];
+  const keepIdxs = keepLabels.map(lbl => headerNorms.findIndex(val => val === normalize(lbl)));
+
+        // Βήμα 5: Προσθήκη των επιπλέον στηλών
+        const finalHeader = [
+          'Κωδ.Πελάτη','Συνεργάτης','ΤΡ','ΜΕ BAZAAR','Οδός','Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'
+        ];
+        const newWs = newWb.addWorksheet(ws.name);
+        finalHeader.forEach((h, i) => {
+          newWs.getRow(1).getCell(i+1).value = h;
+        });
+
+        // Console logs (μετά από όλα τα φύλλα)
+        if (removedRowsLog.length) {
+          // console.log('Αφαιρέθηκαν οι παρακάτω γραμμές:', removedRowsLog);
+        } else {
+          // console.log('Δεν αφαιρέθηκε καμία γραμμή.');
+        }
+        if (odosOnlyLog.length) {
+          // console.log('Γραμμές που ταιριάζουν μόνο με "Οδός" (CASE 7, δεν διαγράφονται):', odosOnlyLog);
+        }
+
+        // Εφαρμογή BlackList logic πάνω στα επεξεργασμένα δεδομένα
+        let case7Count = 0;
+        const finalRows = [];
+        for (const row of dedupedRows) {
+          const codeColIdx = keepIdxs[0] > 0 ? keepIdxs[0] : null;
+          const partnerColIdx = keepIdxs[1] > 0 ? keepIdxs[1] : null;
+          const streetColIdx = keepIdxs[2] > 0 ? keepIdxs[2] : null;
+          const rawCodeVal = codeColIdx ? row.getCell(codeColIdx).value : null;
+          // Use toPlainString for all values to handle ExcelJS cell objects, richText, etc.
+          const mCode = codeColIdx ? toPlainString(rawCodeVal) : null;
+          const mPartner = partnerColIdx ? toPlainString(row.getCell(partnerColIdx).value) : null;
+          const mStreet = streetColIdx ? toPlainString(row.getCell(streetColIdx).value) : null;
+          if ((!mCode || mCode === '') && rawCodeVal) {
+            console.warn('[BL DEBUG] Unable to extract plain Κωδ.Πελάτη', {
+              sheet: ws.name,
+              row: row.number,
+              rawCodeVal
+            });
+          }
+          const normMCode = normalizeBLValue(mCode);
+          const normMPartner = normalizeBLValue(mPartner);
+          const normMStreet = normalizeBLValue(mStreet);
+
+          // --- ΕΛΕΓΧΟΣ RETAIL για ΤΡ ---
+          let trigValue = '';
+          if (mCode) {
+            const normCode = normalize(mCode);
+            if (retailCodes.has(normCode)) {
+              trigValue = 'ΤΡ';
+            } else {
+              // Debug: αν δεν βρέθηκε, log τιμές
+              // console.log('[DEBUG] Δεν βρέθηκε match για Κωδ.Πελάτη:', mCode, '| normalized:', normCode, '| retailCodes:', Array.from(retailCodes));
+            }
+          }
+
+          // --- ΕΛΕΓΧΟΣ SPAR για ΜΕ BAZAAR ---
+          let bazaarValue = '';
+          if (mCode) {
+            const normCode = normalize(mCode);
+            if (sparCodeToRegion.has(normCode)) {
+              bazaarValue = sparCodeToRegion.get(normCode);
+            }
+          }
+
+          let toDelete = false;
+          let matchedCase = null;
+          let matchedEntry = null;
+          let wasOdosOnly = false;
+          for (const e of blEntries) {
+            const hasCode = !!e.normCode;
+            const hasPartner = !!e.normPartner;
+            const hasStreet = !!e.normStreet;
+            // CASE 1
+            if (hasCode && hasPartner && hasStreet) {
+              if (
+                normMCode &&
+                normMPartner &&
+                normMStreet &&
+                normMCode === e.normCode &&
+                normMPartner === e.normPartner &&
+                normMStreet === e.normStreet
+              ) {
+                toDelete = true;
+                matchedCase = 1;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 2
+            else if (hasCode && hasPartner && !hasStreet) {
+              if (
+                normMCode &&
+                normMPartner &&
+                normMCode === e.normCode &&
+                normMPartner === e.normPartner
+              ) {
+                toDelete = true;
+                matchedCase = 2;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 3
+            else if (hasCode && !hasPartner && hasStreet) {
+              if (
+                normMCode &&
+                normMStreet &&
+                normMCode === e.normCode &&
+                normMStreet === e.normStreet
+              ) {
+                toDelete = true;
+                matchedCase = 3;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 4
+            else if (!hasCode && hasPartner && hasStreet) {
+              if (
+                normMPartner &&
+                normMStreet &&
+                normMPartner === e.normPartner &&
+                normMStreet === e.normStreet
+              ) {
+                toDelete = true;
+                matchedCase = 4;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 5
+            else if (hasCode && !hasPartner && !hasStreet) {
+              if (normMCode && normMCode === e.normCode) {
+                toDelete = true;
+                matchedCase = 5;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 6
+            else if (!hasCode && hasPartner && !hasStreet) {
+              if (normMPartner && normMPartner === e.normPartner) {
+                toDelete = true;
+                matchedCase = 6;
+                matchedEntry = e;
+                break;
+              }
+            }
+            // CASE 7
+            else if (!hasCode && !hasPartner && hasStreet) {
+              if (normMStreet && normMStreet === e.normStreet) {
+                case7Count++;
+                wasOdosOnly = true;
+                matchedCase = 7;
+                matchedEntry = e;
+                break; // Δεν διαγράφουμε, μόνο μετράμε
+              }
+            }
+          }
+
+          if (toDelete) {
+            console.log('[BL DEBUG] Deleting row', {
+              sheet: ws.name,
+              row: row.number,
+              case: matchedCase,
+              raw: { mCode, mPartner, mStreet },
+              entry: {
+                code: matchedEntry ? matchedEntry.code : null,
+                partner: matchedEntry ? matchedEntry.partner : null,
+                street: matchedEntry ? matchedEntry.street : null
+              }
+            });
+          } else if (!wasOdosOnly && (normMCode || normMPartner || normMStreet)) {
+            const codeMatches = normMCode ? blEntries.filter(e => e.normCode === normMCode) : [];
+            const partnerMatches = normMPartner ? blEntries.filter(e => e.normPartner === normMPartner) : [];
+            const streetMatches = normMStreet ? blEntries.filter(e => e.normStreet === normMStreet) : [];
+            if (codeMatches.length || partnerMatches.length || streetMatches.length) {
+              console.log('[BL DEBUG] Row not deleted despite potential matches', {
+                sheet: ws.name,
+                row: row.number,
+                raw: { mCode, mPartner, mStreet },
+                norm: { normMCode, normMPartner, normMStreet },
+                candidates: {
+                  code: codeMatches.map(e => ({ code: e.code, partner: e.partner, street: e.street })),
+                  partner: partnerMatches.map(e => ({ code: e.code, partner: e.partner, street: e.street })),
+                  street: streetMatches.map(e => ({ code: e.code, partner: e.partner, street: e.street }))
+                }
+              });
+            }
+          }
+
+          if (toDelete) {
+            removedRowsLog.push({
+              sheet: ws.name,
+              row: row.number,
+              mCode,
+              mPartner,
+              mStreet,
+              matchedCase,
+              matchedEntry
+            });
+          } else if (wasOdosOnly) {
+            odosOnlyLog.push({
+              sheet: ws.name,
+              row: row.number,
+              mCode,
+              mPartner,
+              mStreet,
+              matchedCase,
+              matchedEntry
+            });
+          }
+
+          // Αν δεν διαγράφεται, πρόσθεσε τη γραμμή στο νέο φύλλο
+          if (!toDelete) {
+            // Δημιουργία νέας γραμμής με τη σωστή σειρά στηλών
+            const newRowArr = [
+              mCode,
+              mPartner,
+              trigValue, // ΤΡ
+              bazaarValue, // ΜΕ BAZAAR
+              mStreet,
+              '', '', '', '', '', '', '' // Α, Β, ΕΛ, ΣΟΚ, Ψ, ΚΤΨ, +
+            ];
+            const sanitizedRow = newRowArr.map(val => {
+              if (val === null) return '';
+              // If richText, join all text parts
+              if (val && typeof val === 'object' && Array.isArray(val.richText)) {
+                return val.richText.map(p => p.text).join('');
+              }
+              // If text property
+              if (val && typeof val === 'object' && 'text' in val && val.text != null) {
+                return String(val.text);
+              }
+              // If result property
+              if (val && typeof val === 'object' && 'result' in val && val.result != null) {
+                return String(val.result);
+              }
+              // If value property (ExcelJS cell)
+              if (val && typeof val === 'object' && 'value' in val && val.value != null) {
+                return toPlainString(val.value);
+              }
+              // If array (should not happen, but for safety)
+              if (Array.isArray(val)) {
+                return val.map(toPlainString).join('');
+              }
+              // Fallback: use toPlainString
+              return toPlainString(val);
+            });
+            if (sanitizedRow.some(val => typeof val === 'string' && /\[object Object]/i.test(val))) {
+              console.warn('[BL DEBUG] Sanitized row still contains object markers', { sheet: ws.name, row: row.number, sanitizedRow, raw: newRowArr });
+            }
+            finalRows.push(sanitizedRow);
+          }
+        }
+
+        // Αλφαβητική ταξινόμηση: πρώτα Αγγλικά (Latin) μετά Ελληνικά, και κάθε ομάδα με αλφαβητική σειρά
+        function isLatin(ch) {
+          return /^[A-Za-z]/.test(ch);
+        }
+        function isGreek(ch) {
+          return /^[Α-Ωα-ωΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/.test(ch);
+        }
+        // Ταξινόμηση με βάση τη στήλη "Συνεργάτης" (index 1)
+        finalRows.sort((a, b) => {
+          const aVal = (a[1] || '').toString().trim();
+          const bVal = (b[1] || '').toString().trim();
+          const aFirst = aVal[0] || '';
+          const bFirst = bVal[0] || '';
+          const aIsLatin = isLatin(aFirst);
+          const bIsLatin = isLatin(bFirst);
+          const aIsGreek = isGreek(aFirst);
+          const bIsGreek = isGreek(bFirst);
+          if (aIsLatin && !bIsLatin) return -1;
+          if (!aIsLatin && bIsLatin) return 1;
+          if (aIsGreek && !bIsGreek) return 1;
+          if (!aIsGreek && bIsGreek) return -1;
+          // Αν είναι ίδια κατηγορία, κάνε localeCompare
+          return aVal.localeCompare(bVal, aIsLatin ? 'en' : 'el');
+        });
+
+        // Πρόσθεσε τις ταξινομημένες γραμμές στο νέο φύλλο
+  finalRows.forEach((rawArr, rowIdx) => {
+          // Ensure each value is a plain string/number — handle richText / object cells
+          const safeArr = rawArr.map(v => {
+            if (v === undefined || v === null) return '';
+            if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+            if (typeof v === 'string') return v;
+            if (typeof v === 'object') {
+              // Try richText, text, result, value, array, fallback to JSON
+              if (Array.isArray(v.richText)) return v.richText.map(p => p.text).join('');
+              if ('text' in v && v.text != null) return String(v.text);
+              if ('result' in v && v.result != null) return String(v.result);
+              if ('value' in v && v.value != null) return toPlainString(v.value);
+              if (Array.isArray(v)) return v.map(toPlainString).join('');
+              // If still object, try to join all string/number properties
+              let joined = '';
+              for (const key in v) {
+                if (!Object.prototype.hasOwnProperty.call(v, key)) continue;
+                const inner = v[key];
+                if (typeof inner === 'string' && inner.trim() !== '') joined += inner;
+                if (typeof inner === 'number') joined += String(inner);
+                if (Array.isArray(inner?.richText)) joined += inner.richText.map(r => r.text).join('');
+              }
+              if (joined) return joined;
+              try { return JSON.stringify(v); } catch (err) { return '' }
+            }
+            return String(v);
+          });
+          if (safeArr.some(val => typeof val === 'string' && /\[object Object]/i.test(val))) {
+            console.warn('[BL DEBUG] Detected unresolved object value in finalRows', { sheet: ws.name, safeArr });
+          }
+          newWs.addRow(safeArr);
+          if (rowIdx < 5) {
+            console.log('[BL DEBUG] Added row preview', { sheet: ws.name, safeArr });
+          }
+        });
+
+        // Εφαρμογή μαύρου μεσαίου πάχους border στον κωδικό πελάτη (αριστερά) και στην τελευταία στήλη (δεξιά)
+        const kodPelatiColIdx = finalHeader.findIndex(x => x && x.replace(/\s+/g,'').toLowerCase().includes('κωδ.πελάτη')) + 1;
+        const lastColumnIdx = finalHeader.length;
+        if (kodPelatiColIdx > 0 && lastColumnIdx > 0) {
+          const mediumBlack = { style: 'medium', color: { argb: 'FF000000' } };
+          newWs.eachRow({ includeEmpty: false }, (row) => {
+            const leftCell = row.getCell(kodPelatiColIdx);
+            const rightCell = row.getCell(lastColumnIdx);
+            if (leftCell) {
+              const current = leftCell.border || {};
+              leftCell.border = { ...current, left: mediumBlack };
+            }
+            if (rightCell) {
+              const current = rightCell.border || {};
+              rightCell.border = { ...current, right: mediumBlack };
+            }
+          });
+        }
+
+        // Αντιγραφή format/πλάτους στηλών (προαιρετικά)
+        ws.columns.forEach((col, idx) => {
+          newWs.getColumn(idx + 1).width = col.width;
+        });
+
+        // Προειδοποίηση για CASE 7
+        if (case7Count > 0) {
+          showModal(
+            'Προειδοποίηση',
+            `Στη BlackList βρέθηκαν ${case7Count} εγγραφές “Οδός” χωρίς στοιχεία Πελάτη.<br><br>Για αυτές τις εγγραφές δεν θα γίνει καμία ενέργεια (δεν διαγράφεται καμία γραμμή). Οι υπόλοιπες αλλαγές εφαρμόστηκαν κανονικά στο τελικό αποτέλεσμα.`
+          );
+        }
+      });
+
+      // Log after all sheets processed
+      if (removedRowsLog.length) {
+  // console.log(`Αφαιρέθηκαν συνολικά ${removedRowsLog.length} γραμμές:`, removedRowsLog);
+      } else {
+  // console.log('Δεν αφαιρέθηκε καμία γραμμή.');
+      }
+      if (odosOnlyLog.length) {
+  // console.log(`Γραμμές που ταιριάζουν μόνο με "Οδός" (CASE 7, δεν διαγράφονται): ${odosOnlyLog.length}`, odosOnlyLog);
+      }
+      return newWb;
+    }
+
+    function renderSheetToContainer({ sheet, container, key, initialRows = RAW_INITIAL_ROWS, maxCols = RAW_MAX_COLS }) {
+  // Headers to bold and width 4 in preview
+  const width4Headers = ['Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'];
+      // Ονόματα headers που θέλουν best fit και bold
+      const boldBestFitHeaders = [
+        'Κωδ.Πελάτη','Συνεργάτης','ΤΡ','ΜΕ BAZAAR','Οδός',
+        'Περιοχή','Μεταφορική','Διεύθυνση Μετ','Τύπος Φορτίου','Μέρες','Τηλέφωνο 1','Τηλέφωνο 2'
+      ];
+      // ...existing code...
+      if (!state.visibleRows.has(key)) state.visibleRows.set(key, initialRows);
+      const visible = Math.max(1, state.visibleRows.get(key));
+      const rowCount = sheet.actualRowCount || sheet.rowCount || (sheet._rows ? sheet._rows.length : 0);
+      const colCount = sheet.actualColumnCount || sheet.columnCount || (sheet.columns ? sheet.columns.length : 0);
+      const rowsTo = Math.min(rowCount, visible);
+      const colsTo = Math.min(colCount, maxCols);
+      const mergeRanges = sheet.model && sheet.model.merges ? sheet.model.merges : [];
+      const mergeMap = new Map();
+      mergeRanges.forEach(rangeStr => {
+        const [start, end] = rangeStr.split(':');
+        const startColLetter = start.replace(/\d+/g, '');
+        const endColLetter   = end.replace(/\d+/g, '');
+        const startRowNum = parseInt(start.replace(/\D/g,''),10);
+        const endRowNum   = parseInt(end.replace(/\D/g,''),10);
+        const startCol = colLetterToNumber(startColLetter);
+        const endCol   = colLetterToNumber(endColLetter);
+        mergeMap.set(start, { startCol, endCol, startRow: startRowNum, endRow: endRowNum });
+      });
+      // ...όλος ο υπόλοιπος κώδικας ΔΕΝ πρέπει να ξαναδηλώνει τις παραπάνω μεταβλητές...
+
+      // Εντοπισμός index αυτών των headers (μετά τη δήλωση rowsTo/colsTo)
+      let boldCols = [];
+      let bestFitColWidths = Array(colsTo+1).fill(0); // 1-based
+      if (rowsTo > 0) {
+        const headerRow = sheet.getRow(1);
+        for (let cc = 1; cc <= colsTo; cc++) {
+          const val = toPlainString(headerRow.getCell(cc).value).toString().trim();
+          if (boldBestFitHeaders.includes(val)) boldCols.push(cc);
+          if (width4Headers.includes(val)) {
+            boldCols.push(cc);
+            bestFitColWidths[cc] = 4;
+          }
+        }
+        // Υπολογισμός max width για κάθε best fit στήλη (headers + δεδομένα, συμπεριλαμβανομένων και κενών/merged)
+        for (let c of boldCols) {
+          let maxLen = 0;
+          for (let r = 1; r <= rowsTo; r++) {
+            let cell = sheet.getRow(r).getCell(c);
+            let val = toPlainString(cell && cell.value !== undefined ? cell.value : '');
+            if (val == null) val = '';
+            val = String(val);
+            if (val.length > maxLen) maxLen = val.length;
+          }
+          // Αν είναι width4Header, κρατάμε το 4, αλλιώς best fit
+          if (!width4Headers.includes(toPlainString(headerRow.getCell(c).value).trim())) {
+            bestFitColWidths[c] = Math.max(8, Math.min(60, maxLen + 4));
+          }
+        }
+      }
+      // ...existing code...
+
+  container.innerHTML = '';
+  const block = document.createElement('div');
+  block.className = 'sheet-block';
+  const title = document.createElement('div');
+  title.className = 'sheet-title';
+  title.innerHTML = `<span>${key}</span>`;
+  // Toggle button
+  const toggleBtn = document.createElement('button');
+  toggleBtn.textContent = 'Show/Hide';
+  toggleBtn.style.marginLeft = '12px';
+  toggleBtn.style.fontSize = '12px';
+  toggleBtn.className = 'ghost';
+  title.appendChild(toggleBtn);
+  block.appendChild(title);
+  // Table wrapper for toggling
+  const tableWrap = document.createElement('div');
+  tableWrap.style.display = '';
+  const table = document.createElement('table');
+  // Δημιουργία <colgroup> για σωστό best fit
+  const colgroup = document.createElement('colgroup');
+  for (let cc = 1; cc <= colsTo; cc++) {
+    const col = document.createElement('col');
+    // Αν είναι η στήλη Συνεργάτης, κάνε max-width 30ch και word-break
+  const headerVal = toPlainString(sheet.getRow(1).getCell(cc).value).toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase();
+    if (headerVal.includes('συνεργατης')) {
+      col.style.width = '30ch';
+      col.style.maxWidth = '30ch';
+      col.style.wordBreak = 'break-word';
+      col.style.whiteSpace = 'pre-wrap';
+    } else if (boldCols.includes(cc) && bestFitColWidths[cc] > 0) {
+      col.style.width = bestFitColWidths[cc] + 'ch';
+      col.style.maxWidth = bestFitColWidths[cc] + 'ch';
+    }
+    colgroup.appendChild(col);
+  }
+  table.appendChild(colgroup);
+  const tbody = document.createElement('tbody');
+  // Set header row height and center alignment
+  // Εντοπισμός στήλης για διπλή κάθετη γραμμή (double vertical border)
+  // Βρες το index της στήλης "ΤΡ", "ME BAZAAR" ή "+" (με normalization)
+  function advNormalize(val) {
+    if (val == null) return '';
+    if (typeof val === 'number') val = val.toString();
+    if (typeof val === 'object' && val !== null) {
+      if ('text' in val) val = val.text;
+      else if ('result' in val) val = val.result;
+      else if ('value' in val) val = val.value;
+    }
+    return String(val)
+      .replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c))
+      .replace(/\s+/g,'')
+      .trim()
+      .toLowerCase();
+  }
+  // Εντοπισμός στήλης "Συνεργάτης" για wrap/best fit
+  let synerCol = null;
+  // Εντοπισμός στήλης "Α", "Ψ", "+" για διπλές κάθετες
+  let colA = null, colPsi = null, colPlus = null;
+  if (rowsTo > 0) {
+    const headerRow = sheet.getRow(1);
+    for (let cc = 1; cc <= colsTo; cc++) {
+      const val = advNormalize(headerRow.getCell(cc).value || '');
+      if (val.includes('συνεργατης')) synerCol = cc;
+      if (val === 'α') colA = cc;
+      if (val === 'ψ') colPsi = cc;
+      if (val === '+') colPlus = cc;
+    }
+  }
+  const thead = document.createElement('thead');
+  const headerTr = document.createElement('tr');
+  for (let cc = 1; cc <= colsTo; cc++) {
+  const th = document.createElement('th');
+  th.style.height = '25px';
+  th.style.textAlign = 'center';
+  th.style.verticalAlign = 'middle';
+  th.style.background = '#C8C8C8';
+  th.style.fontFamily = 'Tahoma, Arial, sans-serif';
+  th.style.fontSize = '8.5pt';
+  th.style.fontWeight = 'bold';
+  th.style.borderTop = '2px solid #000';
+  th.style.borderBottom = '2px solid #000';
+  th.style.borderLeft = '1px solid #7F7F7F';
+  th.style.borderRight = '1px solid #7F7F7F';
+  th.style.color = '#000';
+  th.textContent = toPlainString(sheet.getRow(1).getCell(cc).value).trim();
+  headerTr.appendChild(th);
+  }
+  thead.appendChild(headerTr);
+  table.appendChild(thead);
+
+  // Προσθήκη date row αν υπάρχει (πάνω από headers)
+  // Ελέγχει αν η πρώτη γραμμή έχει μόνο ένα μη κενό κελί (ημερομηνία)
+  const firstRow = sheet.getRow(1);
+  let nonEmptyCells = 0, dateCellIdx = -1, dateVal = '';
+  for (let c = 1; c <= colsTo; c++) {
+  const v = firstRow.getCell(c).value;
+  if (v && toPlainString(v).trim() !== '') { nonEmptyCells++; dateCellIdx = c; dateVal = toPlainString(v); }
+  }
+  if (nonEmptyCells === 1 && dateCellIdx > 0) {
+    const dateTr = document.createElement('tr');
+    for (let c = 1; c <= colsTo; c++) {
+      const td = document.createElement('td');
+      td.style.height = '25px';
+      td.style.fontFamily = 'Arial, Tahoma, sans-serif';
+      td.style.fontSize = '16pt';
+      td.style.fontWeight = 'bold';
+      td.style.textAlign = 'center';
+      td.style.verticalAlign = 'middle';
+      td.style.background = '#fff';
+      if (c === dateCellIdx) {
+  td.textContent = toPlainString(dateVal);
+      } else {
+        td.textContent = '';
+      }
+      dateTr.appendChild(td);
+    }
+    thead.insertBefore(dateTr, thead.firstChild);
+  }
+
+  for (let r = 2; r <= rowsTo; r++) { // Ξεκίνα από 2 για να μην ξαναμπεί το header row
+    const tr = document.createElement('tr');
+    for (let c = 1; c <= colsTo; c++) {
+      const td = document.createElement('td');
+      td.style.textAlign = 'center';
+      td.style.verticalAlign = 'middle';
+      td.style.fontFamily = 'Tahoma, Arial, sans-serif';
+      td.style.fontSize = '8.5pt';
+      td.style.whiteSpace = 'pre-line';
+      td.style.height = '22px';
+      td.style.borderTop = '1px solid #7F7F7F';
+      td.style.borderBottom = '1px solid #7F7F7F';
+      td.style.borderLeft = '1px solid #7F7F7F';
+      td.style.borderRight = '1px solid #7F7F7F';
+      td.style.color = '#000';
+      // Διπλή κάθετη αριστερά στη στήλη "Α" ή "Ψ"
+      if (c === colA || c === colPsi) {
+        td.style.borderLeft = '3px double #000';
+      }
+      // Διπλή κάθετη δεξιά στη στήλη "+"
+      if (c === colPlus) {
+        td.style.borderRight = '3px double #000';
+      }
+      // Wrap και best fit για "Συνεργάτης"
+      if (synerCol && c === synerCol) {
+        td.style.whiteSpace = 'pre-line';
+        td.style.wordBreak = 'break-word';
+        td.style.maxWidth = '180px';
+      }
+      // Alternate row background (if present in Excel)
+      if (r % 2 === 0) {
+        td.style.background = '#F7F7F7';
+      }
+      const plainVal = toPlainString(sheet.getRow(r).getCell(c).value);
+      td.textContent = plainVal != null ? String(plainVal) : '';
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  tableWrap.appendChild(table);
+  block.appendChild(tableWrap);
+
+      if (rowsTo < rowCount) {
+        const btn = document.createElement('button');
+        btn.textContent = `Φόρτωση επιπλέον (+${RAW_STEP_ROWS})`;
+        btn.className = 'load-more';
+        btn.addEventListener('click', () => {
+          const current = state.visibleRows.get(key) || initialRows;
+          state.visibleRows.set(key, current + RAW_STEP_ROWS);
+          renderSheetToContainer({ sheet, container, key, initialRows, maxCols });
+        });
+        tableWrap.appendChild(btn);
+      } else {
+        const done = document.createElement('div');
+        done.className = 'meta';
+        done.textContent = '(Όλα τα rows αποδόθηκαν)';
+        tableWrap.appendChild(done);
+      }
+
+      // --- SCROLL BUTTONS ΣΤΗΝ ΙΔΙΑ ΕΥΘΕΙΑ ΜΕ ΤΟ HEADER ---
+  // (ΑΦΑΙΡΕΘΗΚΑΝ τα inline κουμπιά για να μην μπερδεύουν το UI, χρησιμοποιούνται μόνο τα fixed)
+
+      // Toggle logic
+      toggleBtn.addEventListener('click', () => {
+        if (tableWrap.style.display === 'none') {
+          tableWrap.style.display = '';
+        } else {
+          tableWrap.style.display = 'none';
+        }
+      });
+
+      container.appendChild(block);
+
+  // Τέλος renderSheetToContainer: ενημέρωσε τα κουμπιά scroll αμέσως και με retry αν χρειαστεί
+  (function ensureScrollButtons() {
+    let tries = 0;
+    function tryUpdate() {
+      if (typeof window.updateBtnPositions === 'function') {
+        const preview = document.getElementById('previewFinal');
+        const sheetTitle = document.querySelector('.sheet-title');
+        // Περιμένουμε να υπάρχουν και να έχουν width > 0
+        if (
+          preview && sheetTitle &&
+          preview.offsetWidth > 0 && sheetTitle.offsetWidth > 0
+        ) {
+          window.updateBtnPositions();
+        } else if (tries < 20) {
+          tries++;
+          setTimeout(tryUpdate, 60);
+        }
+      } else if (tries < 20) {
+        tries++;
+        setTimeout(tryUpdate, 60);
+      }
+    }
+    tryUpdate();
+  })();
+    }
+
+    function renderSelectedMasterFinal() {
+      // --- BOLD & BEST FIT ΣΤΟ EXCEL ---
+      // Ενιαία function για όλα τα widths στο export
+      function setExportColumnWidths(sheet) {
+        function advNormalize(val) {
+          if (val == null) return '';
+          if (typeof val === 'number') val = val.toString();
+          if (typeof val === 'object' && val !== null) {
+            if ('text' in val) val = val.text;
+            else if ('result' in val) val = val.result;
+            else if ('value' in val) val = val.value;
+          }
+          return String(val)
+            .replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c))
+            .replace(/\s+/g,'')
+            .trim()
+            .toLowerCase();
+        }
+  const width4Headers = ['Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+','ΤΡ'].map(advNormalize);
+  const width11Headers = ['Κωδ.Πελατη'].map(advNormalize);
+        const colCount = sheet.columnCount;
+        // Βρες τη γραμμή header: αν η πρώτη γραμμή είναι κενή ή περιέχει ημερομηνία, πάρε τη 2η
+        let headerRowIdx = 1;
+        const firstRow = sheet.getRow(1);
+        let nonEmptyCells = 0;
+        for (let c = 1; c <= colCount; c++) {
+          if (firstRow.getCell(c).value && String(firstRow.getCell(c).value).trim() !== "") nonEmptyCells++;
+        }
+        // Αν μόνο ένα κελί έχει τιμή (ημερομηνία), τότε το header είναι στη 2η γραμμή
+        if (nonEmptyCells === 1) headerRowIdx = 2;
+        const header = sheet.getRow(headerRowIdx);
+        for (let c = 1; c <= colCount; c++) {
+          const valNorm = advNormalize(header.getCell(c).value || '');
+          if (valNorm === advNormalize('Κωδ.Πελατη')) {
+            sheet.getColumn(c).width = 10;
+            // Εφαρμογή font size 8.5 σε όλα τα κελιά της στήλης
+            for (let r = 1; r <= sheet.rowCount; r++) {
+              let cell = sheet.getRow(r).getCell(c);
+              if (cell && cell.value !== undefined) {
+                const baseFontName = (cell.font && cell.font.name) ? cell.font.name : 'Segoe UI';
+                cell.font = { ...(cell.font || {}), name: baseFontName, size: 8.5 };
+              }
+            }
+          } else if (width4Headers.includes(valNorm)) {
+            sheet.getColumn(c).width = 4;
+          } else if (width11Headers.includes(valNorm)) {
+            sheet.getColumn(c).width = 11;
+          } else {
+            // Best fit για τις υπόλοιπες
+            let maxLen = 0;
+            for (let r = 1; r <= sheet.rowCount; r++) {
+              let val = sheet.getRow(r).getCell(c).value;
+              if (val == null) val = '';
+              if (typeof val === 'object' && val.richText) val = val.richText.map(pt => pt.text).join('');
+              val = String(val);
+              if (val.length > maxLen) maxLen = val.length;
+            }
+            sheet.getColumn(c).width = Math.max(8, Math.min(60, Math.ceil(maxLen * 1.15 + 2)));
+          }
+        }
+      }
+      // --- Export button για Excel ---
+      let exportBtn = document.getElementById('exportFinalExcelBtn');
+      if (!exportBtn) {
+        exportBtn = document.createElement('button');
+        exportBtn.id = 'exportFinalExcelBtn';
+        exportBtn.textContent = 'Download Excel (Πελατες & Πρακτορεια Ημερας)';
+        exportBtn.style.margin = '12px 0';
+        exportBtn.onclick = async function() {
+          // --- Hash function για ID_Παραγγελίας ---
+          function hashString(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+  }
+  return Math.abs(hash);
+}
+          const ExcelJS = window.ExcelJS;
+          const wb = new ExcelJS.Workbook();
+          const ONE_CM_IN_INCHES = 1 / 2.54;
+
+          function trimTrailingEmptyValues(arr) {
+            if (!Array.isArray(arr)) return arr;
+            while (arr.length) {
+              const last = arr[arr.length - 1];
+              if (last == null) {
+                arr.pop();
+                continue;
+              }
+              if (typeof last === 'string') {
+                if (last.trim() === '') {
+                  arr.pop();
+                  continue;
+                }
+              }
+              break;
+            }
+            return arr;
+          }
+
+          function applyMediumBorderEdges(sheet, kodColIdx, lastColIdx) {
+            if (!sheet || kodColIdx < 1 || lastColIdx < 1) return;
+            const rowCount = sheet.rowCount;
+            if (!rowCount) return;
+            const columnCount = sheet.columnCount || 0;
+            let headerRowIdx = 1;
+            const firstRow = sheet.getRow(1);
+            if (firstRow) {
+              let nonEmpty = 0;
+              const colLimit = columnCount || lastColIdx;
+              for (let c = 1; c <= colLimit; c++) {
+                const val = firstRow.getCell(c).value;
+                if (val != null && String(val).trim() !== '') {
+                  nonEmpty++;
+                  if (nonEmpty > 1) break;
+                }
+              }
+              if (nonEmpty === 1) headerRowIdx = 2;
+            }
+            if (headerRowIdx > rowCount) return;
+            const rightColIdx = columnCount ? Math.min(lastColIdx, columnCount) : lastColIdx;
+            for (let r = headerRowIdx; r <= rowCount; r++) {
+              const row = sheet.getRow(r);
+              const leftCell = row.getCell(kodColIdx);
+              if (leftCell) {
+                const border = { ...(leftCell.border || {}) };
+                border.left = { style: 'medium', color: { argb: 'FF000000' } };
+                leftCell.border = border;
+              }
+              const rightCell = row.getCell(rightColIdx);
+              if (rightCell) {
+                const border = { ...(rightCell.border || {}) };
+                border.right = { style: 'medium', color: { argb: 'FF000000' } };
+                rightCell.border = border;
+              }
+            }
+          }
+          // 1ο φύλλο: Πελατες Ημερας
+          const pelatesSheet = wb.addWorksheet('Πελατες Ημερας');
+          Object.assign(pelatesSheet.pageSetup, {
+            orientation: 'portrait',
+            fitToPage: true,
+            fitToWidth: 1,
+            fitToHeight: 1,
+            margins: {
+              top: ONE_CM_IN_INCHES,
+              bottom: ONE_CM_IN_INCHES,
+              left: ONE_CM_IN_INCHES,
+              right: ONE_CM_IN_INCHES,
+              header: 0.3,
+              footer: 0.3
+            }
+          });
+          const proc = state.context.processedMaster;
+          const sel = document.getElementById('masterSheetSelect');
+          const idx = sel ? Number(sel.value) : 0;
+          const sheet = proc.worksheets[idx];
+          // Βρες τα indexes των "Κωδ.Πελάτη" και "Οδός"
+          const headerRowValues = sheet.getRow(1).values.slice(1).map(toPlainString);
+          trimTrailingEmptyValues(headerRowValues);
+          const headerNormValues = headerRowValues.map(normalize);
+          const idxCodeNorm = normalize('Κωδ.Πελάτη');
+          const idxOdosNorm = normalize('Οδός');
+          const idxCode = headerNormValues.findIndex(v => v === idxCodeNorm) + 1;
+          const idxOdos = headerNormValues.findIndex(v => v === idxOdosNorm) + 1;
+          if (idxCode <= 0 || idxOdos <= 0) {
+            console.error('[EXPORT] Missing required columns after normalization', { headerRowValues, headerNormValues });
+            showModal('Λείπουν στήλες', `Δεν βρέθηκαν οι στήλες <strong>Κωδ.Πελάτη</strong> και/ή <strong>Οδός</strong> στο επιλεγμένο φύλλο. Βεβαιωθείτε ότι τα headers είναι σωστά.`);
+            return;
+          }
+          // Δημιούργησε header με ID_Παραγγελίας πρώτο
+          const pelatesHeader = ["ID_Παραγγελίας", ...headerRowValues];
+          // Βρες index της στήλης 'Συνεργάτης' με normalization
+          function advNorm(val) {
+            return (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+          }
+          const normalizeForSort = val => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+          const normalizeForGroupKey = val => (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+          let idxSynergatis = pelatesHeader.findIndex(x => advNorm(x).includes('συνεργατης'));
+          if (idxSynergatis === -1) idxSynergatis = pelatesHeader.findIndex(x => advNorm(x).includes('συνεργ'));
+          if (idxSynergatis === -1) idxSynergatis = 2;
+          // Δημιούργησε γραμμή ημερομηνίας πάνω από τα headers
+          window._today = window._today || new Date();
+          window._dateStr = window._dateStr || window._today.toLocaleDateString('el-GR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+          const today = window._today;
+          const dateStr = window._dateStr;
+          const dateRowArr = Array(pelatesHeader.length).fill("");
+          dateRowArr[idxSynergatis] = dateStr;
+          const dateRowObj = pelatesSheet.addRow(dateRowArr);
+          dateRowObj.getCell(idxSynergatis+1).font = { name: 'Arial', size: 16, bold: true };
+          dateRowObj.getCell(idxSynergatis+1).alignment = { vertical: 'middle', horizontal: 'center' };
+          const headerRowObj = pelatesSheet.addRow(pelatesHeader);
+          headerRowObj.height = 25;
+          const headerColCount = pelatesHeader.length;
+          // ...existing code...
+          // Για κάθε γραμμή, υπολόγισε το ID και πρόσθεσέ το ως πρώτη στήλη
+          const idMap = new Map();
+          // Find the index of the 'Κωδ.Πελατη' column (case-insensitive, ignore spaces and accents)
+          let kodPelatiCol = pelatesHeader.findIndex(x => advNorm(x) === 'κωδ.πελατη');
+          if (kodPelatiCol !== -1) {
+            kodPelatiCol += 1; // convert zero-based array index to Excel column index
+          } else {
+            kodPelatiCol = 2; // fallback to second column if not found
+          }
+          // Headers που θέλουν οριζόντια κεντράρισμα
+          const centerHeaders = ['ΤΡ','Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'].map(h => h.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase());
+          const synergatisCol = idxSynergatis + 1;
+          const idxOdosHeader = pelatesHeader.findIndex(x => advNorm(x).includes('οδο'));
+          const odosCol = idxOdosHeader === -1 ? -1 : idxOdosHeader + 1;
+          const pelatesGroupMap = new Map();
+          const pelatesGroupOrder = [];
+          const transportHeaderIdx = pelatesHeader.findIndex(x => normalizeForGroupKey(x).includes('μεταφορικ'));
+          const regionHeaderIdx = pelatesHeader.findIndex(x => normalizeForGroupKey(x).includes('περιοχη'));
+
+          for (let r = 2; r <= sheet.rowCount; r++) {
+            const row = sheet.getRow(r);
+            const code = idxCode > 0 ? toPlainString(row.getCell(idxCode).value) || '' : '';
+            const odosOriginal = idxOdos > 0 ? toPlainString(row.getCell(idxOdos).value) || '' : '';
+            const id = hashString(String(code) + String(odosOriginal));
+            idMap.set(code + '|' + odosOriginal, id);
+            const rowVals = row.values.slice(1).map(v => {
+              const plain = toPlainString(v);
+              return plain && /\[object Object]/i.test(plain) ? '' : plain;
+            });
+            const rowValuesWithId = [id, ...rowVals];
+            const entry = {
+              rowValues: rowValuesWithId,
+              kodVal: toPlainString(rowValuesWithId[kodPelatiCol - 1]) || '',
+              synergatisVal: synergatisCol > 0 ? toPlainString(rowValuesWithId[synergatisCol - 1]) || '' : '',
+              odosVal: odosCol > 0 ? toPlainString(rowValuesWithId[odosCol - 1]) || '' : '',
+              transportVal: '',
+              hasRegion: regionHeaderIdx !== -1 ? Boolean((toPlainString(rowValuesWithId[regionHeaderIdx]) || '').trim()) : false,
+              originalIndex: r
+            };
+            if (transportHeaderIdx !== -1) {
+              const transportCol = transportHeaderIdx + 1;
+              entry.transportVal = toPlainString(rowValuesWithId[transportCol - 1]) || '';
+            }
+            const groupKey = `${normalizeForGroupKey(entry.kodVal)}|${normalizeForGroupKey(entry.synergatisVal)}`;
+            if (!pelatesGroupMap.has(groupKey)) {
+              pelatesGroupMap.set(groupKey, []);
+              pelatesGroupOrder.push(groupKey);
+            }
+            pelatesGroupMap.get(groupKey).push(entry);
+          }
+
+          const sortEntriesByOdos = entries => {
+            if (odosCol <= 0) return entries;
+            entries.sort((a, b) => {
+              const aOdos = normalizeForSort(a.odosVal);
+              const bOdos = normalizeForSort(b.odosVal);
+              if (aOdos === bOdos) return a.originalIndex - b.originalIndex;
+              if (!aOdos) return 1;
+              if (!bOdos) return -1;
+              return aOdos.localeCompare(bOdos);
+            });
+            return entries;
+          };
+
+          const groupsWithRegion = [];
+          const groupsWithoutRegion = [];
+          for (const key of pelatesGroupOrder) {
+            const entries = pelatesGroupMap.get(key);
+            sortEntriesByOdos(entries);
+            const hasRegion = entries.some(entry => entry.hasRegion);
+            if (hasRegion) groupsWithRegion.push(key);
+            else groupsWithoutRegion.push(key);
+          }
+
+          const orderedGroupKeys = [...groupsWithRegion, ...groupsWithoutRegion];
+
+          const transportGroupBuckets = new Map();
+          const transportOrder = [];
+          for (const key of orderedGroupKeys) {
+            const entries = pelatesGroupMap.get(key);
+            if (!entries) continue;
+            sortEntriesByOdos(entries);
+            const sampleTransport = entries.length ? entries[0].transportVal || '' : '';
+            const transportKey = normalizeForGroupKey(sampleTransport);
+            if (!transportGroupBuckets.has(transportKey)) {
+              transportGroupBuckets.set(transportKey, []);
+              transportOrder.push(transportKey);
+            }
+            transportGroupBuckets.get(transportKey).push({ key, entries });
+          }
+
+          // Τα δεδομένα θα προστεθούν και θα μορφοποιηθούν μετά την ολοκλήρωση των λοιπών φύλλων
+          let pelatesRowsWritten = false;
+
+          function finalizePelatesSheet(groupOrderPreference = null) {
+            if (pelatesRowsWritten) return;
+            const usedKeys = new Set();
+            const appendEntries = entries => {
+              if (!entries || !entries.length) return;
+              sortEntriesByOdos(entries);
+              for (const entry of entries) {
+                const newRow = pelatesSheet.addRow(entry.rowValues);
+                newRow.height = 25;
+                newRow.eachCell((cell, colNumber) => {
+                  const headerVal = (pelatesHeader[colNumber-1] || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase();
+                  const isCenter = centerHeaders.includes(headerVal);
+                  if (headerVal.includes('συνεργατης')) {
+                    cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                  } else {
+                    cell.alignment = { vertical: 'middle', horizontal: isCenter ? 'center' : undefined };
+                  }
+                  cell.font = { name: 'Segoe UI', size: (colNumber === kodPelatiCol ? 8.5 : 11) };
+                });
+              }
+            };
+
+            const appendBucketOrder = () => {
+              if (!transportOrder.length) return;
+              for (const transportKey of transportOrder) {
+                const bucket = transportGroupBuckets.get(transportKey);
+                if (!bucket) continue;
+                for (const { key, entries } of bucket) {
+                  if (usedKeys.has(key)) continue;
+                  appendEntries(entries);
+                  usedKeys.add(key);
+                }
+              }
+            };
+
+            if (Array.isArray(groupOrderPreference)) {
+              for (const key of groupOrderPreference) {
+                const entries = pelatesGroupMap.get(key);
+                if (!entries) continue;
+                appendEntries(entries);
+                usedKeys.add(key);
+              }
+            }
+
+            appendBucketOrder();
+
+            for (const key of pelatesGroupOrder) {
+              if (usedKeys.has(key)) continue;
+              const entries = pelatesGroupMap.get(key);
+              appendEntries(entries);
+            }
+
+            // Εφαρμογή μορφοποιήσεων μετά την εισαγωγή των δεδομένων
+            for (let c = 1; c <= pelatesSheet.columnCount; c++) {
+              let maxLen = 0;
+              let isSynergatis = false;
+              const headerVal = (pelatesHeader[c-1] || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase();
+              if (headerVal.includes('συνεργατης')) isSynergatis = true;
+              for (let r = 1; r <= pelatesSheet.rowCount; r++) {
+                let val = pelatesSheet.getRow(r).getCell(c).value;
+                if (val == null) val = '';
+                if (typeof val === 'object' && val.richText) val = val.richText.map(pt=>pt.text).join('');
+                val = String(val);
+                if (val.length > maxLen) maxLen = val.length;
+              }
+              if (isSynergatis) {
+                pelatesSheet.getColumn(c).width = Math.min(30, Math.max(8, Math.ceil(maxLen * 1.15 + 2)));
+              } else {
+                pelatesSheet.getColumn(c).width = Math.max(8, Math.min(60, Math.ceil(maxLen * 1.15 + 2)));
+              }
+            }
+
+            pelatesSheet.getColumn(1).hidden = true;
+            for (let r = 1; r <= pelatesSheet.rowCount; r++) {
+              const row = pelatesSheet.getRow(r);
+              for (let c = 1; c <= pelatesSheet.columnCount; c++) {
+                const cell = row.getCell(c);
+                cell.numFmt = '@';
+              }
+            }
+
+            (function applyDataCellBorders(sheet) {
+              const colCount = sheet.columnCount;
+              const rowCount = sheet.rowCount;
+              for (let r = 2; r <= rowCount; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = row.getCell(c);
+                  cell.border = {
+                    left:   { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                    right:  { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                    top:    undefined,
+                    bottom: { style: 'thin', color: { argb: 'FFA5A5A5' } }
+                  };
+                }
+              }
+            })(pelatesSheet);
+
+            (function applyPerimeterBorder(sheet) {
+              const colCount = sheet.columnCount;
+              const rowCount = sheet.rowCount;
+              if (rowCount < 2) return;
+              const dataStart = 2, dataEnd = rowCount;
+              for (let r = dataStart; r <= dataEnd; r++) {
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = sheet.getRow(r).getCell(c);
+                  let border = { ...cell.border };
+                  if (r === dataStart) border.top = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (r === dataEnd)   border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (c === 1)         border.left = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (c === colCount)  border.right = { style: 'medium', color: { argb: 'FF000000' } };
+                  cell.border = border;
+                }
+              }
+            })(pelatesSheet);
+
+            function applyDoubleBorders(sheet) {
+              const colCount = sheet.columnCount;
+              let headerRowIdx = 1;
+              const firstRow = sheet.getRow(1);
+              let nonEmptyCells = 0;
+              for (let c = 1; c <= colCount; c++) {
+                if (firstRow.getCell(c).value && String(firstRow.getCell(c).value).trim() !== '') nonEmptyCells++;
+              }
+              if (nonEmptyCells === 1) headerRowIdx = 2;
+              const header = sheet.getRow(headerRowIdx);
+              let colA = -1, colPsi = -1, colPlus = -1;
+              for (let c = 1; c <= colCount; c++) {
+                const val = (header.getCell(c).value || '').toString().trim();
+                if (val === 'Α') colA = c;
+                if (val === 'Ψ') colPsi = c;
+                if (val === '+') colPlus = c;
+              }
+              for (let r = headerRowIdx + 1; r <= sheet.rowCount; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = row.getCell(c);
+                  if (c === colA || c === colPsi) {
+                    cell.border = { ...cell.border, left: { style: 'double', color: { argb: 'FF000000' } } };
+                  }
+                  if (c === colPlus) {
+                    cell.border = { ...cell.border, right: { style: 'double', color: { argb: 'FF000000' } } };
+                  }
+                }
+              }
+            }
+            applyDoubleBorders(pelatesSheet);
+            setExportColumnWidths(pelatesSheet);
+
+            function advNorm(val) {
+              return (val || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+            }
+            let kodPelatiHeaderCol = -1;
+            for (let cc = 0; cc < pelatesHeader.length; cc++) {
+              if (advNorm(pelatesHeader[cc]) === 'κωδ.πελατη') { kodPelatiHeaderCol = cc + 1; break; }
+            }
+            headerRowObj.eachCell((cell, colNumber) => {
+              if (colNumber < kodPelatiHeaderCol) return;
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFC8C8C8' }
+              };
+              cell.font = {
+                name: 'Tahoma',
+                size: 8.5
+              };
+              let border = {
+                top:    { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                bottom: { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                left:   { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                right:  { style: 'thin', color: { argb: 'FF7F7F7F' } }
+              };
+              if (colNumber === kodPelatiHeaderCol) border.left = { style: 'medium', color: { argb: 'FF000000' } };
+              if (colNumber === headerColCount) border.right = { style: 'medium', color: { argb: 'FF000000' } };
+              border.top = { style: 'medium', color: { argb: 'FF000000' } };
+              border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+              cell.border = border;
+            });
+
+            applyMediumBorderEdges(pelatesSheet, kodPelatiHeaderCol, headerColCount);
+            pelatesRowsWritten = true;
+          }
+
+          // 2ο φύλλο: Πρακτορεια Ημερας
+          const praktoreiaSheet = wb.addWorksheet('Πρακτορεια Ημερας');
+          Object.assign(praktoreiaSheet.pageSetup, {
+            orientation: 'landscape',
+            fitToPage: true,
+            fitToWidth: 1,
+            fitToHeight: 1,
+            margins: {
+              top: ONE_CM_IN_INCHES,
+              bottom: ONE_CM_IN_INCHES,
+              left: ONE_CM_IN_INCHES,
+              right: ONE_CM_IN_INCHES,
+              header: 0.3,
+              footer: 0.3
+            }
+          });
+          if (window._lastPraktoreiaTempSheet && window._lastPraktoreiaTempSheet._rows) {
+            const tempSheet = window._lastPraktoreiaTempSheet;
+            // Header
+            let praktoreiaHeader = null;
+            if (tempSheet && tempSheet.getRow && tempSheet.getRow(1)) {
+              praktoreiaHeader = ["ID_Παραγγελίας", ...tempSheet.getRow(1).values.slice(1).map(v => toPlainString(v))];
+            } else {
+              // Fallback: try to get from praktoreiaSheet if possible
+              if (praktoreiaSheet && praktoreiaSheet.getRow && praktoreiaSheet.getRow(2)) {
+                praktoreiaHeader = praktoreiaSheet.getRow(2).values.slice(1).map(v => toPlainString(v));
+              } else {
+                praktoreiaHeader = [];
+              }
+            }
+            trimTrailingEmptyValues(praktoreiaHeader);
+            // Βρες index της στήλης 'Συνεργάτης' με normalization
+            let idxSynergatis2 = praktoreiaHeader.findIndex(x => advNorm(x).includes('συνεργατης'));
+            if (idxSynergatis2 === -1) idxSynergatis2 = praktoreiaHeader.findIndex(x => advNorm(x).includes('συνεργ'));
+            if (idxSynergatis2 === -1) idxSynergatis2 = 2;
+            // Δημιούργησε γραμμή ημερομηνίας πάνω από τα headers
+            const dateRowArr2 = Array(praktoreiaHeader.length).fill("");
+            dateRowArr2[idxSynergatis2] = dateStr;
+            const dateRowObj2 = praktoreiaSheet.addRow(dateRowArr2);
+            dateRowObj2.getCell(idxSynergatis2+1).font = { name: 'Arial', size: 16, bold: true };
+            dateRowObj2.getCell(idxSynergatis2+1).alignment = { vertical: 'middle', horizontal: 'center' };
+            const headerRowObj2 = praktoreiaSheet.addRow(praktoreiaHeader);
+            headerRowObj2.height = 25;
+            const headerColCount2 = praktoreiaHeader.length;
+            // Εντοπισμός στήλης "Κωδ. Πελατη" (με normalization)
+            let praktKodPelatiCol = -1;
+            let praktKodPelatiHeaderCol = -1;
+            for (let cc = 0; cc < praktoreiaHeader.length; cc++) {
+              if (advNorm(praktoreiaHeader[cc]) === 'κωδ.πελατη') {
+                praktKodPelatiCol = cc + 1;
+                praktKodPelatiHeaderCol = cc + 1;
+                break;
+              }
+            }
+            headerRowObj2.eachCell((cell, colNumber) => {
+              if (colNumber < praktKodPelatiHeaderCol) return;
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFC8C8C8' }
+              };
+              cell.font = {
+                name: 'Tahoma',
+                size: 8.5
+              };
+              let border = {
+                top:    { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                bottom: { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                left:   { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                right:  { style: 'thin', color: { argb: 'FF7F7F7F' } }
+              };
+              if (colNumber === praktKodPelatiHeaderCol) border.left = { style: 'medium', color: { argb: 'FF000000' } };
+              if (colNumber === headerColCount2) border.right = { style: 'medium', color: { argb: 'FF000000' } };
+              border.top = { style: 'medium', color: { argb: 'FF000000' } };
+              border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+              cell.border = border;
+            });
+            // Εύρεση index στήλης 'Κωδ.Πελατη' στο πρακτορεία
+            // (Removed duplicate declaration of praktKodPelatiHeaderCol)
+            // Headers που θέλουν οριζόντια κεντράρισμα
+            const centerHeaders2 = ['ΤΡ','Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'].map(h => h.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase());
+            const praktSynergatisCol = idxSynergatis2 + 1;
+            const praktOdosHeaderIdx = praktoreiaHeader.findIndex(x => advNorm(x).includes('οδο'));
+            const praktOdosCol = praktOdosHeaderIdx === -1 ? -1 : praktOdosHeaderIdx + 1;
+            const idxPerioxiHeaderIdx = praktoreiaHeader.findIndex(x => advNorm(x) === 'περιοχη');
+            const praktTransportHeaderIdx = praktoreiaHeader.findIndex(x => normalizeForGroupKey(x).includes('μεταφορικ'));
+            const praktGroupMap = new Map();
+            const praktGroupOrder = [];
+            const praktGroupInfo = new Map();
+
+            for (let r = 2; r <= tempSheet.rowCount; r++) {
+              const row = tempSheet.getRow(r);
+              const code = idxCode > 0 ? toPlainString(row.getCell(idxCode).value || '') : '';
+              const odos = idxOdos > 0 ? toPlainString(row.getCell(idxOdos).value || '') : '';
+              const id = idMap.get(code + '|' + odos) || '';
+              const rowVals = row.values.slice(1).map(v => (v === null ? null : toPlainString(v)));
+              const practicalRowValues = [id, ...rowVals].map(val => {
+                if (val === null) return null;
+                const plain = toPlainString(val);
+                if (plain && /\[object Object]/i.test(plain)) return '';
+                return plain;
+              });
+              const hasObjectPlaceholder = practicalRowValues.some(val => typeof val === 'string' && /\[object Object]/i.test(val));
+              const entry = {
+                rowValues: practicalRowValues,
+                kodVal: praktKodPelatiCol > 0 ? (toPlainString(practicalRowValues[praktKodPelatiCol - 1]) || '') : '',
+                synergatisVal: praktSynergatisCol > 0 ? (toPlainString(practicalRowValues[praktSynergatisCol - 1]) || '') : '',
+                odosVal: praktOdosCol > 0 ? (toPlainString(practicalRowValues[praktOdosCol - 1]) || '') : '',
+                hasRegion: idxPerioxiHeaderIdx !== -1 ? Boolean(toPlainString(practicalRowValues[idxPerioxiHeaderIdx] || '').trim()) : false,
+                transportVal: praktTransportHeaderIdx !== -1 ? (toPlainString(practicalRowValues[praktTransportHeaderIdx + 1 - 1]) || '') : '',
+                originalIndex: r,
+                hasObjectPlaceholder
+              };
+              const groupKey = `${normalizeForGroupKey(entry.kodVal)}|${normalizeForGroupKey(entry.synergatisVal)}`;
+              if (!praktGroupMap.has(groupKey)) {
+                praktGroupMap.set(groupKey, []);
+                praktGroupOrder.push(groupKey);
+                praktGroupInfo.set(groupKey, { hasRegion: false });
+              }
+              if (entry.hasRegion) {
+                const info = praktGroupInfo.get(groupKey);
+                info.hasRegion = true;
+              }
+              praktGroupMap.get(groupKey).push(entry);
+              if (hasObjectPlaceholder) {
+                console.warn('[PRAKT DEBUG] raw values before addRow contain [object Object]', { row: r, values: practicalRowValues });
+              }
+            }
+
+            const sortPraktEntriesByOdos = entries => {
+              if (praktOdosCol <= 0) return entries;
+              entries.sort((a, b) => {
+                const aOdos = normalizeForSort(a.odosVal);
+                const bOdos = normalizeForSort(b.odosVal);
+                if (aOdos === bOdos) return a.originalIndex - b.originalIndex;
+                if (!aOdos) return 1;
+                if (!bOdos) return -1;
+                return aOdos.localeCompare(bOdos);
+              });
+              return entries;
+            };
+
+            const praktGroupsWithRegion = [];
+            const praktGroupsWithoutRegion = [];
+            for (const key of praktGroupOrder) {
+              const info = praktGroupInfo.get(key);
+              if (info && info.hasRegion) praktGroupsWithRegion.push(key);
+              else praktGroupsWithoutRegion.push(key);
+            }
+            const praktOrderedKeys = [...praktGroupsWithRegion, ...praktGroupsWithoutRegion];
+
+            const praktTransportBuckets = new Map();
+            const praktTransportOrder = [];
+            const praktFinalGroupOrder = [];
+
+            for (const key of praktOrderedKeys) {
+              const entries = praktGroupMap.get(key);
+              if (!entries) continue;
+              sortPraktEntriesByOdos(entries);
+              const sampleTransport = entries.length ? entries[0].transportVal || '' : '';
+              const transportKey = normalizeForGroupKey(sampleTransport);
+              if (!praktTransportBuckets.has(transportKey)) {
+                praktTransportBuckets.set(transportKey, []);
+                praktTransportOrder.push(transportKey);
+              }
+              praktTransportBuckets.get(transportKey).push({ key, entries });
+            }
+
+            for (const transportKey of praktTransportOrder) {
+              const bucket = praktTransportBuckets.get(transportKey);
+              if (!bucket) continue;
+              for (const { key, entries } of bucket) {
+                if (entries && !praktFinalGroupOrder.includes(key)) praktFinalGroupOrder.push(key);
+                for (const entry of entries) {
+                  const newRow = praktoreiaSheet.addRow(entry.rowValues);
+                  newRow.height = 25;
+                  newRow.eachCell((cell, colNumber) => {
+                    const headerVal = (praktoreiaHeader[colNumber-1] || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase();
+                    const isCenter = centerHeaders2.includes(headerVal);
+                    if (headerVal.includes('συνεργάτης')) {
+                      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                    } else {
+                      cell.alignment = { vertical: 'middle', horizontal: isCenter ? 'center' : undefined };
+                    }
+                    cell.font = { name: 'Segoe UI', size: (colNumber === praktKodPelatiCol ? 8.5 : 11) };
+                  });
+                }
+              }
+            }
+
+            finalizePelatesSheet(praktFinalGroupOrder);
+
+            function applyPraktoreiaVerticalMerges(sheet, headerValues) {
+              if (!sheet || !Array.isArray(headerValues)) return;
+              const headerNorms = headerValues.map(advNorm);
+              const idxKod = headerNorms.findIndex(x => x === 'κωδ.πελατη');
+              const idxOdos = headerNorms.findIndex(x => x.includes('οδο'));
+              const idxPlus = headerNorms.findIndex(x => x === '+');
+              if (idxKod === -1 || idxOdos === -1 || idxPlus === -1) return;
+              const dataStart = 3; // 1=ημερομηνία, 2=κεφαλίδες
+              const rowCount = sheet.rowCount;
+              if (rowCount < dataStart) return;
+              const groups = new Map();
+              for (let r = dataStart; r <= rowCount; r++) {
+                const row = sheet.getRow(r);
+                let kodVal = row.getCell(idxKod + 1).value;
+                let odosVal = row.getCell(idxOdos + 1).value;
+                if (kodVal && typeof kodVal === 'object' && kodVal.richText) kodVal = kodVal.richText.map(pt => pt.text).join('');
+                if (odosVal && typeof odosVal === 'object' && odosVal.richText) odosVal = odosVal.richText.map(pt => pt.text).join('');
+                const key = `${advNorm(kodVal)}|${advNorm(odosVal)}`;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(r);
+              }
+              for (const rows of groups.values()) {
+                if (rows.length < 2) continue;
+                const start = rows[0];
+                const end = rows[rows.length - 1];
+                for (let c = idxKod + 1; c <= idxPlus + 1; c++) {
+                  sheet.mergeCells(start, c, end, c);
+                }
+              }
+            }
+            applyPraktoreiaVerticalMerges(praktoreiaSheet, praktoreiaHeader);
+
+            // --- ΜΟΝΟ ΠΡΑΚΤΟΡΕΙΑ: Δημιουργία τρίτου φύλλου με όμοια μορφοποίηση ---
+            function clonePraktoreiaHeaders(targetSheet) {
+              const srcDateRow = praktoreiaSheet.getRow(1);
+              const srcHeaderRow = praktoreiaSheet.getRow(2);
+              const dateRowValues = srcDateRow.values.slice(1);
+              const headerRowValues = srcHeaderRow.values.slice(1);
+              const dateRowClone = targetSheet.addRow(dateRowValues.map(v=>toPlainString(v)));
+              dateRowClone.height = srcDateRow.height || dateRowClone.height;
+              dateRowClone.eachCell((cell, colNumber) => {
+                const srcCell = srcDateRow.getCell(colNumber);
+                if (srcCell.font) cell.font = { ...srcCell.font };
+                if (srcCell.alignment) cell.alignment = { ...srcCell.alignment };
+                if (srcCell.fill) cell.fill = { ...srcCell.fill };
+              });
+              const headerRowClone = targetSheet.addRow(headerRowValues.map(v=>toPlainString(v)));
+              headerRowClone.height = srcHeaderRow.height || 25;
+              headerRowClone.eachCell((cell, colNumber) => {
+                const srcCell = srcHeaderRow.getCell(colNumber);
+                if (srcCell.font) cell.font = { ...srcCell.font };
+                if (srcCell.alignment) cell.alignment = { ...srcCell.alignment };
+                if (srcCell.fill) cell.fill = { ...srcCell.fill };
+                if (srcCell.border) cell.border = { ...srcCell.border };
+              });
+            }
+            function clonePraktoreiaRow(sourceRow, targetSheet) {
+              const newRowVals = sourceRow.values.slice(1);
+              const newRow = targetSheet.addRow(newRowVals.map(v=>toPlainString(v)));
+              newRow.height = 25;
+              newRow.eachCell((cell, colNumber) => {
+                const srcCell = sourceRow.getCell(colNumber);
+                if (srcCell.font) cell.font = { ...srcCell.font };
+                if (srcCell.alignment) cell.alignment = { ...srcCell.alignment };
+                if (srcCell.fill) cell.fill = { ...srcCell.fill };
+                if (srcCell.border) cell.border = { ...srcCell.border };
+              });
+            }
+            function applyPraktoreiaColumnWidths(sheet) {
+              const colCount = sheet.columnCount;
+              if (!colCount) return;
+              let headerRowIdx = 1;
+              const firstRow = sheet.getRow(1);
+              let nonEmptyCells = 0;
+              for (let c = 1; c <= colCount; c++) {
+                const val = firstRow.getCell(c).value;
+                if (val != null && String(val).trim() !== '') nonEmptyCells++;
+              }
+              if (nonEmptyCells === 1) headerRowIdx = 2;
+              const headerRow = sheet.getRow(headerRowIdx);
+              for (let c = 1; c <= colCount; c++) {
+                const headerNorm = advNorm(headerRow.getCell(c).value || '');
+                let maxLen = 0;
+                for (let r = 1; r <= sheet.rowCount; r++) {
+                  let val = sheet.getRow(r).getCell(c).value;
+                  if (val == null) val = '';
+                  if (typeof val === 'object' && val.richText) val = val.richText.map(pt => pt.text).join('');
+                  val = String(val);
+                  if (val.length > maxLen) maxLen = val.length;
+                }
+                const bestFit = Math.ceil(maxLen * 1.15 + 2);
+                if (headerNorm.includes('συνεργατης')) {
+                  sheet.getColumn(c).width = Math.min(30, Math.max(8, bestFit));
+                } else {
+                  sheet.getColumn(c).width = Math.max(8, Math.min(60, bestFit));
+                }
+              }
+            }
+            function applyAlternateRowFillByGroup(sheet, headerValues, colorA = 'FFFFFFFF', colorB = 'FFE1E1E1') {
+              // Fill by merged group: all rows in a merged block get the same color, alternate per group
+              const rowCount = sheet.rowCount;
+              const colCount = sheet.columnCount;
+              if (!rowCount || !colCount) return;
+              let headerRowIdx = 1;
+              const firstRow = sheet.getRow(1);
+              let nonEmptyCells = 0;
+              for (let c = 1; c <= colCount; c++) {
+                const val = firstRow.getCell(c).value;
+                if (val != null && String(val).trim() !== '') nonEmptyCells++;
+              }
+              if (nonEmptyCells === 1) headerRowIdx = 2;
+              const startRow = headerRowIdx + 1;
+              if (startRow > rowCount) return;
+              // Find group columns
+              const advNorm = v => (v||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').toLowerCase();
+              const headerNorms = headerValues.map(advNorm);
+              const idxKod = headerNorms.findIndex(x => x === 'κωδ.πελατη');
+              const idxOdos = headerNorms.findIndex(x => x.includes('οδο'));
+              if (idxKod === -1 || idxOdos === -1) return;
+              // Build groups: key = Κωδ. Πελάτη + Οδός, value = [row numbers]
+              const groups = [];
+              const groupMap = new Map();
+              for (let r = startRow; r <= rowCount; r++) {
+                const row = sheet.getRow(r);
+                let kodVal = row.getCell(idxKod + 1).value;
+                let odosVal = row.getCell(idxOdos + 1).value;
+                if (kodVal && typeof kodVal === 'object' && kodVal.richText) kodVal = kodVal.richText.map(pt => pt.text).join('');
+                if (odosVal && typeof odosVal === 'object' && odosVal.richText) odosVal = odosVal.richText.map(pt => pt.text).join('');
+                const key = `${advNorm(kodVal)}|${advNorm(odosVal)}`;
+                if (!groupMap.has(key)) groupMap.set(key, []);
+                groupMap.get(key).push(r);
+              }
+              for (const rows of groupMap.values()) {
+                groups.push(rows);
+              }
+              // Apply fill per group
+              let colorToggle = true; // true=white, false=gray
+              for (const rows of groups) {
+                const fillColor = colorToggle ? colorA : colorB;
+                colorToggle = !colorToggle;
+                for (const r of rows) {
+                  const row = sheet.getRow(r);
+                  for (let c = 1; c <= colCount; c++) {
+                    const cell = row.getCell(c);
+                    cell.fill = {
+                      type: 'pattern',
+                      pattern: 'solid',
+                      fgColor: { argb: fillColor },
+                      bgColor: { argb: fillColor }
+                    };
+                  }
+                }
+              }
+            }
+            function applyPraktoreiaSheetStyling(sheet) {
+              (function applyDataCellBorders(sheet) {
+                const colCount = sheet.columnCount;
+                const rowCount = sheet.rowCount;
+                for (let r = 2; r <= rowCount; r++) {
+                  const row = sheet.getRow(r);
+                  for (let c = 1; c <= colCount; c++) {
+                    const cell = row.getCell(c);
+                    cell.border = {
+                      left:   { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                      right:  { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                      top:    undefined,
+                      bottom: { style: 'thin', color: { argb: 'FFA5A5A5' } }
+                    };
+                  }
+                }
+              })(sheet);
+
+              (function applyPerimeterBorder(sheet) {
+                const colCount = sheet.columnCount;
+                const rowCount = sheet.rowCount;
+                if (rowCount < 2) return;
+                const dataStart = 2, dataEnd = rowCount;
+                for (let r = dataStart; r <= dataEnd; r++) {
+                  for (let c = 1; c <= colCount; c++) {
+                    const cell = sheet.getRow(r).getCell(c);
+                    let border = { ...cell.border };
+                    if (r === dataStart) border.top = { style: 'medium', color: { argb: 'FF000000' } };
+                    if (r === dataEnd)   border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+                    if (c === 1)         border.left = { style: 'medium', color: { argb: 'FF000000' } };
+                    if (c === colCount)  border.right = { style: 'medium', color: { argb: 'FF000000' } };
+                    cell.border = border;
+                  }
+                }
+              })(sheet);
+
+              function applyDoubleBorders(sheet) {
+                const colCount = sheet.columnCount;
+                let headerRowIdx = 1;
+                const firstRow = sheet.getRow(1);
+                let nonEmptyCells = 0;
+                for (let c = 1; c <= colCount; c++) {
+                  if (firstRow.getCell(c).value && String(firstRow.getCell(c).value).trim() !== "") nonEmptyCells++;
+                }
+                if (nonEmptyCells === 1) headerRowIdx = 2;
+                const header = sheet.getRow(headerRowIdx);
+                let colA = -1, colPsi = -1, colPlus = -1;
+                for (let c = 1; c <= colCount; c++) {
+                  const val = (header.getCell(c).value || '').toString().trim();
+                  if (val === 'Α') colA = c;
+                  if (val === 'Ψ') colPsi = c;
+                  if (val === '+') colPlus = c;
+                }
+                for (let r = headerRowIdx + 1; r <= sheet.rowCount; r++) {
+                  const row = sheet.getRow(r);
+                  for (let c = 1; c <= colCount; c++) {
+                    const cell = row.getCell(c);
+                    if (c === colA || c === colPsi) {
+                      cell.border = { ...cell.border, left: { style: 'double', color: { argb: 'FF000000' } } };
+                    }
+                    if (c === colPlus) {
+                      cell.border = { ...cell.border, right: { style: 'double', color: { argb: 'FF000000' } } };
+                    }
+                  }
+                }
+              }
+              applyDoubleBorders(sheet);
+              sheet.getColumn(1).hidden = true;
+              // Όλα τα κελιά του φύλλου ως text format
+              for (let r = 1; r <= sheet.rowCount; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= sheet.columnCount; c++) {
+                  const cell = row.getCell(c);
+                  cell.numFmt = '@';
+                }
+              }
+            }
+
+            const onlyPraktoreiaSheet = wb.addWorksheet('Μόνο Πρακτορεία');
+            Object.assign(onlyPraktoreiaSheet.pageSetup, {
+              orientation: 'landscape',
+              fitToPage: true,
+              fitToWidth: 1,
+              fitToHeight: 1,
+              margins: {
+                top: ONE_CM_IN_INCHES,
+                bottom: ONE_CM_IN_INCHES,
+                left: ONE_CM_IN_INCHES,
+                right: ONE_CM_IN_INCHES,
+                header: 0.3,
+                footer: 0.3
+              }
+            });
+            clonePraktoreiaHeaders(onlyPraktoreiaSheet);
+            const idxPerioxi = idxPerioxiHeaderIdx;
+            if (idxPerioxi !== -1) {
+              for (let r = 3; r <= praktoreiaSheet.rowCount; r++) {
+                const row = praktoreiaSheet.getRow(r);
+                let perioxi = row.getCell(idxPerioxi + 1).value;
+                if (perioxi && typeof perioxi === 'object' && perioxi.richText) perioxi = perioxi.richText.map(pt => pt.text).join('');
+                if (perioxi && String(perioxi).trim() !== '') {
+                  clonePraktoreiaRow(row, onlyPraktoreiaSheet);
+                }
+              }
+            }
+            applyPraktoreiaVerticalMerges(onlyPraktoreiaSheet, praktoreiaHeader);
+            applyPraktoreiaSheetStyling(onlyPraktoreiaSheet);
+            applyPraktoreiaColumnWidths(onlyPraktoreiaSheet);
+            setExportColumnWidths(onlyPraktoreiaSheet);
+            applyDoubleBorders(onlyPraktoreiaSheet);
+            applyMediumBorderEdges(onlyPraktoreiaSheet, praktKodPelatiHeaderCol, headerColCount2);
+            applyAlternateRowFillByGroup(onlyPraktoreiaSheet, praktoreiaHeader, 'FFFFFFFF', 'FFE1E1E1');
+            // Restore thick black bottom border for header row (after all fills)
+            (function restoreHeaderBottomBorder(sheet) {
+              let headerRowIdx = 1;
+              const colCount = sheet.columnCount;
+              const firstRow = sheet.getRow(1);
+              let nonEmptyCells = 0;
+              for (let c = 1; c <= colCount; c++) {
+                const val = firstRow.getCell(c).value;
+                if (val != null && String(val).trim() !== '') nonEmptyCells++;
+              }
+              if (nonEmptyCells === 1) headerRowIdx = 2;
+              const headerRow = sheet.getRow(headerRowIdx);
+              for (let c = 1; c <= colCount; c++) {
+                const cell = headerRow.getCell(c);
+                let border = cell.border || {};
+                border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+                cell.border = border;
+              }
+            })(onlyPraktoreiaSheet);
+            for (let c = 1; c <= praktoreiaSheet.columnCount; c++) {
+              onlyPraktoreiaSheet.getColumn(c).hidden = praktoreiaSheet.getColumn(c).hidden;
+            }
+            onlyPraktoreiaSheet.getColumn(1).hidden = true;
+            // --- ΕΦΑΡΜΟΓΗ THIN GRAY BORDERS ΣΤΑ DATA CELLS (όχι headers) ---
+            (function applyDataCellBorders(sheet) {
+              const colCount = sheet.columnCount;
+              const rowCount = sheet.rowCount;
+              for (let r = 2; r <= rowCount; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = row.getCell(c);
+                  cell.border = {
+                    left:   { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                    right:  { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                    top:    undefined,
+                    bottom: { style: 'thin', color: { argb: 'FFA5A5A5' } }
+                  };
+                }
+              }
+            })(praktoreiaSheet);
+
+            // --- ΕΦΑΡΜΟΓΗ MEDIUM BLACK PERIMETER BORDER ΣΤΟ DATA REGION ---
+            (function applyPerimeterBorder(sheet) {
+              const colCount = sheet.columnCount;
+              const rowCount = sheet.rowCount;
+              if (rowCount < 2) return;
+              const dataStart = 2, dataEnd = rowCount;
+              for (let r = dataStart; r <= dataEnd; r++) {
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = sheet.getRow(r).getCell(c);
+                  let border = { ...cell.border };
+                  if (r === dataStart) border.top = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (r === dataEnd)   border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (c === 1)         border.left = { style: 'medium', color: { argb: 'FF000000' } };
+                  if (c === colCount)  border.right = { style: 'medium', color: { argb: 'FF000000' } };
+                  cell.border = border;
+                }
+              }
+            })(praktoreiaSheet);
+
+            // --- ΔΙΑΤΗΡΗΣΗ FEATURE ΔΙΠΛΗΣ ΚΑΘΕΤΗΣ ΣΤΗΝ 'Α' ΚΑΙ 'Ψ' ---
+            function applyDoubleBorders(sheet) {
+              const colCount = sheet.columnCount;
+              // Βρες τη γραμμή header: αν η πρώτη γραμμή έχει μόνο ένα μη κενό κελί (ημερομηνία), πάρε τη 2η
+              let headerRowIdx = 1;
+              const firstRow = sheet.getRow(1);
+              let nonEmptyCells = 0;
+              for (let c = 1; c <= colCount; c++) {
+                if (firstRow.getCell(c).value && String(firstRow.getCell(c).value).trim() !== "") nonEmptyCells++;
+              }
+              if (nonEmptyCells === 1) headerRowIdx = 2;
+              const header = sheet.getRow(headerRowIdx);
+              let colA = -1, colPsi = -1, colPlus = -1;
+              for (let c = 1; c <= colCount; c++) {
+                const val = (header.getCell(c).value || '').toString().trim();
+                if (val === 'Α') colA = c;
+                if (val === 'Ψ') colPsi = c;
+                if (val === '+') colPlus = c;
+              }
+              // Εφάρμοσε μόνο κάτω από το header
+              for (let r = headerRowIdx + 1; r <= sheet.rowCount; r++) {
+                const row = sheet.getRow(r);
+                for (let c = 1; c <= colCount; c++) {
+                  const cell = row.getCell(c);
+                  if (c === colA || c === colPsi) {
+                    cell.border = { ...cell.border, left: { style: 'double', color: { argb: 'FF000000' } } };
+                  }
+                  if (c === colPlus) {
+                    cell.border = { ...cell.border, right: { style: 'double', color: { argb: 'FF000000' } } };
+                  }
+                }
+              }
+            }
+            applyDoubleBorders(praktoreiaSheet);
+            applyPraktoreiaColumnWidths(praktoreiaSheet);
+            praktoreiaSheet.getColumn(1).hidden = true;
+            // Όλα τα κελιά του φύλλου ως text format
+            for (let r = 1; r <= praktoreiaSheet.rowCount; r++) {
+              const row = praktoreiaSheet.getRow(r);
+              for (let c = 1; c <= praktoreiaSheet.columnCount; c++) {
+                const cell = row.getCell(c);
+                cell.numFmt = '@';
+              }
+            }
+            setExportColumnWidths(praktoreiaSheet);
+            applyDoubleBorders(praktoreiaSheet);
+            // ΕΦΑΡΜΟΓΗ borders headers ΜΕΤΑ το applyDoubleBorders και setExportColumnWidths
+            for (let cc = 0; cc < praktoreiaHeader.length; cc++) {
+              if (advNorm(praktoreiaHeader[cc]) === 'κωδ.πελατη') { praktKodPelatiHeaderCol = cc + 1; break; }
+            }
+            applyMediumBorderEdges(praktoreiaSheet, praktKodPelatiHeaderCol, headerColCount2);
+            headerRowObj2.eachCell((cell, colNumber) => {
+              if (colNumber < praktKodPelatiHeaderCol) return;
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFC8C8C8' }
+              };
+              cell.font = {
+                name: 'Tahoma',
+                size: 8.5
+              };
+              let border = {
+                top:    { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                bottom: { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                left:   { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                right:  { style: 'thin', color: { argb: 'FF7F7F7F' } }
+              };
+              if (colNumber === praktKodPelatiHeaderCol) border.left = { style: 'medium', color: { argb: 'FF000000' } };
+              if (colNumber === headerColCount2) border.right = { style: 'medium', color: { argb: 'FF000000' } };
+              border.top = { style: 'medium', color: { argb: 'FF000000' } };
+              border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+              cell.border = border;
+            });
+          } else {
+            alert('Δεν βρέθηκε προσωρινό φύλλο Πρακτορεια Ημερας. Κάνε πρώτα προβολή.');
+            return;
+          }
+          // Αμυντικοί έλεγχοι πριν την αποθήκευση
+          sanitizeWorkbookFonts(wb);
+          sanitizeWorkbookStyles(wb);
+          sanitizeSharedStrings(wb);
+          const stringValueType = getExcelValueType('String', 3);
+          const sharedStringValueType = getExcelValueType('SharedString', 7);
+          wb.eachSheet(sheet => {
+            sanitizeWorksheetDimensions(sheet);
+            sanitizeWorksheetMergeCells(sheet);
+            sanitizeWorksheetHyperlinks(sheet);
+            sanitizeWorksheetPageSetup(sheet);
+            sheet.eachRow(row => {
+              row.eachCell(cell => {
+                if (!cell) return;
+                if ((cell.type === stringValueType || cell.type === sharedStringValueType) && typeof cell.value === 'string') {
+                  cell.value = cell.value.trim();
+                }
+                if (typeof cell.value === 'string' && !cell.value.trim()) {
+                  cell.value = '';
+                }
+                sanitizeCellFont(cell);
+              });
+            });
+          });
+          // Defensive validation for style/shared string indices before export
+          // Αποθήκευση αρχείου
+          const buf = await wb.xlsx.writeBuffer();
+          const blob = new Blob([buf], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `Πελατες_${window._dateStr.replace(/\//g,'-')}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
+        };
+        // Βάλε το κουμπί πάνω από το previewFinal
+        previewFinal.parentNode.insertBefore(exportBtn, previewFinal);
+      }
+      // Helper για αφαίρεση τόνων (όπως στο debug κομμάτι)
+      function removeGreekTonos(str) {
+        return String(str).replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c));
+      }
+  // ...existing code...
+      // Helper για normalization (trim, lowercase, χωρίς τόνους, χωρίς κενά)
+      function advNormalize(val) {
+        if (val == null) return '';
+        if (typeof val === 'object') {
+          if ('text' in val) val = val.text;
+          else if ('result' in val) val = val.result;
+          else if ('value' in val) val = val.value;
+        }
+        // Αφαίρεση τόνων, trim, lower case, χωρίς κενά
+        return String(val)
+          .replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c))
+          .replace(/\s+/g,'')
+          .trim()
+          .toLowerCase();
+      }
+    const proc = state.context.processedMaster;
+    if (!proc) { showModal('Σφάλμα', 'Το processed MASTER δεν είναι διαθέσιμο.'); return; }
+    const sel = document.getElementById('masterSheetSelect');
+    const idx = sel ? Number(sel.value) : 0;
+    const sheet = proc.worksheets[idx];
+    if (!sheet) { showModal('Σφάλμα', 'Επιλεγμένο φύλλο FINAL δεν βρέθηκε.'); return; }
+    // Βρες indexes Πρακτορεια Ημερας (μετά τον ορισμό του sheet)
+  const praktHeaderRow = sheet.getRow(1);
+  const praktHeaders = praktHeaderRow.values.slice(1).map(x => (x ? String(x).trim() : ''));
+  const idxPraktCode = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη'));
+  const idxPraktPartner = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('συνεργάτης'));
+  const idxPraktOdos = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('οδός'));
+      previewFinal.innerHTML = '';
+      // Δημιουργία wrapper για δύο πίνακες
+      const wrapper = document.createElement('div');
+      // Πίνακας "Πελάτες Ημέρας"
+      const pelatesDiv = document.createElement('div');
+      renderSheetToContainer({ sheet, container: pelatesDiv, key: 'Πελάτες Ημέρας', initialRows: FINAL_INITIAL_ROWS, maxCols: FINAL_MAX_COLS });
+      wrapper.appendChild(pelatesDiv);
+
+      // Πίνακας "Πρακτορεια Ημέρας" με extra columns
+      const praktoreiaDiv = document.createElement('div');
+      // Δημιουργία προσωρινού sheet με extra columns μόνο για Πρακτορεια Ημέρας
+      const ExcelJS = window.ExcelJS;
+      const tempWb = new ExcelJS.Workbook();
+      const tempSheet = tempWb.addWorksheet('Πρακτορεια Ημέρας');
+      // Αντιγραφή δεδομένων από το sheet με δυνατότητα συμπλήρωσης extra στηλών από TRANS
+      // Προετοιμασία TRANS rows (όπως στο συγκριτικό)
+      // Προετοιμασία TRANS rows (όπως στο συγκριτικό)
+      let transRows = [];
+      let normTransHeaderToIdx = {};
+      let normTransHeaderList = [];
+      let idxTransCode = -1, idxTransPartner = -1, idxTransOdos = -1;
+      let idxTransRegion = -1, idxTransMetaforiki = -1;
+      let idxTransDieuthinsiMet = -1, idxTransTyposFortiou = -1, idxTransMeres = -1, idxTransTilefono1 = -1, idxTransTilefono2 = -1;
+      const infoWb = state.context.workbookInfo;
+      if (infoWb) {
+        const transSheet = infoWb.getWorksheet('TRANS');
+        if (transSheet) {
+          const transHeaderRow = transSheet.getRow(1);
+          const transHeaders = transHeaderRow.values.slice(1).map(x => (x ? String(x).trim() : ''));
+          idxTransCode = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη'));
+          idxTransPartner = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('συνεργάτης'));
+          idxTransOdos = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('υποκατάστημα') && x.toLowerCase().includes('οδός'));
+          idxTransRegion = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('περιοχή'));
+          idxTransMetaforiki = transHeaders.findIndex(x => x && x.replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c)).replace(/\s/g, '').toLowerCase().includes('μεταφορικ'));
+          idxTransDieuthinsiMet = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('διεύθυνσημετ'));
+          idxTransTyposFortiou = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('τύποςφορτιου'));
+          idxTransMeres = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('μέρες'));
+          idxTransTilefono1 = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('τηλέφωνο1'));
+          idxTransTilefono2 = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('τηλέφωνο2'));
+          for (let i = 0; i < transHeaders.length; i++) {
+            const norm = String(transHeaders[i] || '').replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c)).replace(/\s+/g,'').trim().toLowerCase();
+            normTransHeaderToIdx[norm] = i + 1;
+            normTransHeaderList.push(norm);
+          }
+          for (let i = 2; i <= transSheet.rowCount; i++) {
+            const row = transSheet.getRow(i);
+            const tObj = {};
+            for (const normKey of normTransHeaderList) {
+              const colIdx = normTransHeaderToIdx[normKey];
+              tObj[normKey] = colIdx ? row.getCell(colIdx).value : undefined;
+            }
+            tObj.code = idxTransCode > -1 ? row.getCell(idxTransCode + 1).value : null;
+            tObj.partner = idxTransPartner > -1 ? row.getCell(idxTransPartner + 1).value : null;
+            tObj.odos = idxTransOdos > -1 ? row.getCell(idxTransOdos + 1).value : null;
+            transRows.push(tObj);
+          }
+        }
+      }
+
+      // Αντιγραφή δεδομένων και συμπλήρωση extra στηλών αν υπάρχει match
+      for (let r = 1; r <= sheet.rowCount; r++) {
+        const origRow = sheet.getRow(r);
+        const arr = origRow.values.slice(1).map(v => toPlainString(v));
+        if (r === 1) {
+          arr.push('Περιοχή','Μεταφορική','Διεύθυνση Μετ','Τύπος Φορτίου','Μέρες','Τηλέφωνο 1','Τηλέφωνο 2');
+          tempSheet.addRow(arr.map(v=>toPlainString(v)));
+        } else {
+          // Βρες όλα τα matches στον TRANS
+          let matches = [];
+          // CASE 1: Οδός έχει τιμή
+          if (arr[idxPraktOdos] && advNormalize(arr[idxPraktOdos]) !== '') {
+            for (const t of transRows) {
+              if (
+                advNormalize(t.code) !== '' && advNormalize(t.partner) !== '' && advNormalize(t.odos) !== '' &&
+                advNormalize(arr[idxPraktCode]) === advNormalize(t.code) &&
+                advNormalize(arr[idxPraktPartner]) === advNormalize(t.partner) &&
+                advNormalize(arr[idxPraktOdos]) === advNormalize(t.odos)
+              ) {
+                matches.push(t);
+              }
+            }
+          }
+          // CASE 2: Αν στον TRANS το 'Υποκατάστημα(Οδός)' είναι κενό, γίνεται match μόνο με βάση 'Κωδ.Πελάτη' και 'Συνεργάτης', αγνοώντας το τι έχει το 'Οδός' του εισαγόμενου
+          if (matches.length === 0) {
+            for (const t of transRows) {
+              if (
+                advNormalize(t.code) !== '' && advNormalize(t.partner) !== '' && (t.odos == null || advNormalize(t.odos) === '') &&
+                advNormalize(arr[idxPraktCode]) === advNormalize(t.code) &&
+                advNormalize(arr[idxPraktPartner]) === advNormalize(t.partner)
+              ) {
+                matches.push(t);
+              }
+            }
+          }
+          // Αν δεν υπάρχουν matches, πρόσθεσε μια κενή γραμμή
+          if (matches.length === 0) {
+            let rowArr = arr.slice();
+            rowArr.push('','','','','','','');
+            const cleanRowArr = rowArr.map(v => {
+              if (v === null) return null;
+              const plain = toPlainString(v);
+              return plain && /\[object Object]/i.test(plain) ? '' : plain;
+            });
+            if (cleanRowArr.some(val => typeof val === 'string' && /\[object Object]/i.test(val))) {
+              console.warn('[PRAKT TEMP DEBUG] unmatched row still has [object Object]', { row: r, values: cleanRowArr });
+            }
+            tempSheet.addRow(cleanRowArr);
+          } else {
+            // Για merge: οι βασικές στήλες θα είναι merged κάθετα
+            // Θα προσθέσουμε τόσες γραμμές όσες τα matches
+            for (let m = 0; m < matches.length; m++) {
+              let rowArr = [];
+              if (m === 0) {
+                rowArr = arr.slice();
+              } else {
+                // Για τις merged στήλες, βάλε null (ώστε να γίνει merge μετά)
+                for (let i = 0; i < arr.length; i++) rowArr.push(null);
+              }
+              function getVal(obj, label) {
+                const norm = removeGreekTonos(String(label)).replace(/\s+/g,'').trim().toLowerCase();
+                let value = obj[norm];
+                if (value === undefined || value === null) return '';
+                return toPlainString(value);
+              }
+              rowArr.push(
+                getVal(matches[m], 'Περιοχή'),
+                getVal(matches[m], 'Μεταφορική'),
+                getVal(matches[m], 'Διεύθυνση Μετ'),
+                getVal(matches[m], 'Τύπος Φορτίου'),
+                getVal(matches[m], 'Μέρες'),
+                getVal(matches[m], 'Τηλέφωνο 1'),
+                getVal(matches[m], 'Τηλέφωνο 2')
+              );
+              const cleanRowArr = rowArr.map(v => {
+                if (v === null) return null;
+                const plain = toPlainString(v);
+                return plain && /\[object Object]/i.test(plain) ? '' : plain;
+              });
+              if (cleanRowArr.some(val => typeof val === 'string' && /\[object Object]/i.test(val))) {
+                console.warn('[PRAKT TEMP DEBUG] matched row still has [object Object]', { row: r, matchIndex: m, values: cleanRowArr });
+              }
+              tempSheet.addRow(cleanRowArr);
+            }
+            // Κάνε merge τα βασικά κελιά κάθετα
+            if (matches.length > 1) {
+              for (let col = 1; col <= arr.length; col++) {
+                tempSheet.mergeCells(tempSheet.lastRow.number - matches.length + 1, col, tempSheet.lastRow.number, col);
+              }
+            }
+          }
+        }
+      }
+      // Σώσε το tempSheet στο window για export
+      window._lastPraktoreiaTempSheet = tempSheet;
+      renderSheetToContainer({ sheet: tempSheet, container: praktoreiaDiv, key: 'Πρακτορεια Ημέρας', initialRows: FINAL_INITIAL_ROWS, maxCols: FINAL_MAX_COLS });
+      wrapper.appendChild(praktoreiaDiv);
+      previewFinal.appendChild(wrapper);
+
+      // --- ΡΗΤΗ ΣΥΓΚΡΙΣΗ "Πρακτορεια Ημερας" vs "TRANS" ---
+      try {
+        const infoWb = state.context.workbookInfo;
+        if (!infoWb) return;
+        const transSheet = infoWb.getWorksheet('TRANS');
+        if (!transSheet) {
+          // Δεν υπάρχει TRANS
+          return;
+        }
+        const DEBUG_TRANS = false;
+        // Βρες indexes TRANS
+        const transHeaderRow = transSheet.getRow(1);
+  // Αγνόησε το πρώτο στοιχείο (empty) ώστε τα indexes να ταιριάζουν με τις στήλες
+  const transHeaders = transHeaderRow.values.slice(1).map(x => (x ? String(x).trim() : ''));
+        // Debug: Δείξε τα headers
+        if (DEBUG_TRANS) console.log('TRANS headers:', transHeaders);
+        const idxTransCode = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη'));
+        const idxTransPartner = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('συνεργάτης'));
+        const idxTransOdos = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('υποκατάστημα') && x.toLowerCase().includes('οδός'));
+        // DEBUG: Δείξε headers και indexes
+        if (DEBUG_TRANS) {
+          console.log('TRANS headers:', transHeaders);
+          console.log('Indexes:', {idxTransCode, idxTransPartner, idxTransOdos});
+        }
+
+        // Βρες indexes Πρακτορεια Ημερας
+        const praktHeaderRow = sheet.getRow(1);
+        const praktHeaders = praktHeaderRow.values.map(x => (x ? String(x).trim() : ''));
+        const idxPraktCode = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη'));
+        const idxPraktPartner = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('συνεργάτης'));
+        const idxPraktOdos = praktHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('οδός'));
+
+
+        // Advanced normalize
+        function advNormalize(ch) {
+          return String(ch || '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // αφαιρεί τόνους
+            .replace(/\s+/g, '');
+        }
+
+        // Build a map of normalized TRANS header names to their column indexes (1-based)
+        const normTransHeaderToIdx = {};
+        const normTransHeaderList = [];
+        for (let i = 0; i < transHeaders.length; i++) {
+          const norm = removeGreekTonos(String(transHeaders[i] || '')).replace(/\s+/g,'').trim().toLowerCase();
+          normTransHeaderToIdx[norm] = i + 1; // ExcelJS columns are 1-based
+          normTransHeaderList.push(norm);
+        }
+        // Debug: print normalized header keys
+  if (DEBUG_TRANS) console.log('Normalized TRANS header keys:', normTransHeaderList);
+
+        // Συλλογή όλων των εγγραφών TRANS
+        // Βρες index Περιοχή
+  const idxTransRegion = transHeaders.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('περιοχή'));
+        // Helper για αφαίρεση τόνων
+        function removeGreekTonos(str) {
+          return String(str).replace(/[ΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/g, c => ({'Ά':'Α','Έ':'Ε','Ή':'Η','Ί':'Ι','Ό':'Ο','Ύ':'Υ','Ώ':'Ω','ά':'α','έ':'ε','ή':'η','ί':'ι','ό':'ο','ύ':'υ','ώ':'ω','ϊ':'ι','ΐ':'ι','ΰ':'υ','Ϊ':'ι','Ϋ':'υ'}[c]||c));
+        }
+        const idxTransMetaforiki = transHeaders.findIndex(x => x && removeGreekTonos(x).replace(/\s/g, '').toLowerCase().includes('μεταφορικ'));
+    if (DEBUG_TRANS) console.log('idxTransMetaforiki:', idxTransMetaforiki);
+        const transRows = [];
+  // DEBUG: Δείξε τα πρώτα 5 transRows
+        for (let i = 2; i <= transSheet.rowCount; i++) {
+          const row = transSheet.getRow(i);
+          // Build a deep object for this row with all normalized header keys
+          const tObj = {};
+          for (const normKey of normTransHeaderList) {
+            const colIdx = normTransHeaderToIdx[normKey];
+            tObj[normKey] = colIdx ? row.getCell(colIdx).value : undefined;
+          }
+         
+          // For convenience, add also the original code, partner, odos, region, metaforiki fields
+          tObj.code = idxTransCode > -1 ? row.getCell(idxTransCode + 1).value : null;
+          tObj.partner = idxTransPartner > -1 ? row.getCell(idxTransPartner + 1).value : null;
+          tObj.odos = idxTransOdos > -1 ? row.getCell(idxTransOdos + 1).value : null;
+          tObj.region = idxTransRegion > -1 ? row.getCell(idxTransRegion + 1).value : null;
+          tObj.metaforiki = idxTransMetaforiki > -1 ? (row.getCell(idxTransMetaforiki + 1).value != null ? String(row.getCell(idxTransMetaforiki + 1).value).trim() : '') : '';
+          // Debug: print allCells for first 10 rows
+          if (i <= 10) {
+            const allCells = [];
+            for (let c = 1; c <= transSheet.columnCount; c++) {
+              allCells.push(row.getCell(c).value);
+            }
+            if (DEBUG_TRANS) console.log(`TRANS row ${i} ALL CELLS:`, allCells);
+          }
+          // Only push if code or partner exists
+          if (tObj.code || tObj.partner) {
+            transRows.push(tObj);
+          }
+        }
+        // DEBUG: Δείξε τα πρώτα 5 transRows και τις τιμές metaforiki
+        if (DEBUG_TRANS) {
+          console.log('Sample TRANS rows:', transRows.slice(0,5));
+          console.log('Sample metaforiki values:', transRows.slice(0,5).map(r => r.metaforiki));
+        }
+
+        // Για κάθε γραμμή "Πρακτορεια Ημερας"
+        for (let i = 2; i <= sheet.rowCount; i++) {
+          const row = sheet.getRow(i);
+          const pCode = idxPraktCode > -1 ? row.getCell(idxPraktCode).value : null;
+          const pPartner = idxPraktPartner > -1 ? row.getCell(idxPraktPartner).value : null;
+          const pOdos = idxPraktOdos > -1 ? row.getCell(idxPraktOdos).value : null;
+
+          // CASE 1: ΜΟΝΟ αν η Οδός στο Πρακτορεια Ημερας έχει τιμή
+          if (pOdos && advNormalize(pOdos) !== '') {
+            for (const t of transRows) {
+              if (
+                advNormalize(t.code) !== '' && advNormalize(t.partner) !== '' && advNormalize(t.odos) !== '' &&
+                advNormalize(pCode) === advNormalize(t.code) &&
+                advNormalize(pPartner) === advNormalize(t.partner) &&
+                advNormalize(pOdos) === advNormalize(t.odos)
+              ) {
+                if (DEBUG_TRANS) {
+                  console.log('[CASE 1 MATCH]', {
+                    PraktoreiaRow: { row: i, code: pCode, partner: pPartner, odos: pOdos },
+                    TransRow: t,
+                    Praktoreio: t.region,
+                    Metaforiki: t.metaforiki,
+                    DieuthinsiMet: t['διευθυνσημετ'],
+                    TyposFortiou: t['τυποςφορτιου'],
+                    Meres: t['μερες'],
+                    Tilefono1: t['τηλέφωνο1'],
+                    Tilefono2: t['τηλέφωνο2']
+                  });
+                }
+              }
+            }
+          }
+          // CASE 2: ΜΟΝΟ αν η Οδός στο Πρακτορεια Ημερας είναι κενή/null
+          if (!pOdos || advNormalize(pOdos) === '') {
+            for (const t of transRows) {
+              if (
+                advNormalize(t.code) !== '' && advNormalize(t.partner) !== '' && (t.odos == null || advNormalize(t.odos) === '') &&
+                advNormalize(pCode) === advNormalize(t.code) &&
+                advNormalize(pPartner) === advNormalize(t.partner)
+              ) {
+                if (DEBUG_TRANS) {
+                  console.log('[CASE 2 MATCH]', {
+                    PraktoreiaRow: { row: i, code: pCode, partner: pPartner, odos: pOdos },
+                    TransRow: t,
+                    Praktoreio: t.region,
+                    Metaforiki: t.metaforiki,
+                    DieuthinsiMet: t['διευθυνσημετ'],
+                    TyposFortiou: t['τυποςφορτιου'],
+                    Meres: t['μερες'],
+                    Tilefono1: t['τηλέφωνο1'],
+                    Tilefono2: t['τηλέφωνο2']
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Σφάλμα στη ρητή σύγκριση Πρακτορεια Ημερας vs TRANS:', err);
+      }
+      // --- ΝΕΟ FEATURE: Customer & Street Name Replace ---
+     // --- Customer & Street Replace (AFTER Praktoreia vs TRANS) ---
+try {
+  const infoWb = state.context.workbookInfo;
+  if (infoWb) {
+    // Normalizer
+    function advNormalize(val) {
+      if (val == null) return '';
+      if (typeof val === 'object') {
+        if ('text' in val) val = val.text;
+        else if ('result' in val) val = val.result;
+        else if ('value' in val) val = val.value;
+      }
+      return String(val)
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // αφαιρεί τόνους
+        .replace(/\s+/g, '');
+    }
+
+    // 1. Customer Name Replace
+    const custReplaceSheet = infoWb.getWorksheet('Customer Name Replace');
+    const customerReplaceMap = new Map();
+    if (custReplaceSheet) {
+      for (let r = 3; r <= custReplaceSheet.rowCount; r++) {
+        const row = custReplaceSheet.getRow(r);
+        const from = row.getCell(1).value;
+        const to = row.getCell(2).value;
+        if (from && to) {
+          // If 'to' is richText, join all text parts, else to string
+          let toStr = '';
+          if (typeof to === 'object' && to && Array.isArray(to.richText)) {
+            toStr = to.richText.map(p => p.text).join('');
+          } else {
+            toStr = String(to).trim();
+          }
+          customerReplaceMap.set(advNormalize(from), toStr);
+        }
+      }
+    }
+
+    // 2. Street Name Replace (4 στήλες: Κωδ.Πελάτη, Συνεργάτης, Από, Σε)
+    // Κανόνες:
+    //   - Από/Σε κενά                              → skip + warning
+    //   - Κωδ.Πελάτη & Συνεργάτης και τα 2 κενά   → skip + warning (ΟΧΙ global replacement)
+    //   - Μόνο Κωδ.Πελάτη                          → match σε γραμμές με ίδιο Κωδ.Πελάτη
+    //   - Μόνο Συνεργάτης                          → match σε γραμμές με ίδιο Συνεργάτης
+    //   - Και τα δύο                               → match ΚΑΙ Κωδ.Πελάτη ΚΑΙ Συνεργάτης (AND)
+    // Σύγκριση "Οδός" == "Από": exact (ολόκληρο το cell), με αφαίρεση τόνων & διακριτικών.
+    // Most-specific wins (Κωδ+Συν > μόνο Κωδ > μόνο Συν).
+    const streetReplaceSheet = infoWb.getWorksheet('Street Name Replace');
+    const streetRules = [];
+    const streetWarnings = [];
+    if (streetReplaceSheet) {
+      // Εντοπισμός γραμμής headers (υποστηρίζει προαιρετική τίτλου γραμμή πάνω από headers)
+      const kKwd  = advNormalize('Κωδ.Πελάτη');
+      const kSyn  = advNormalize('Συνεργάτης');
+      const kFrom = advNormalize('Από');
+      const kTo   = advNormalize('Σε');
+      let headerRowNum = -1;
+      let cKwd = 0, cSyn = 0, cFrom = 0, cTo = 0;
+      const scanUpTo = Math.min(5, streetReplaceSheet.rowCount || 5);
+      for (let r = 1; r <= scanUpTo; r++) {
+        const values = streetReplaceSheet.getRow(r).values || [];
+        const found = {};
+        for (let c = 1; c < values.length; c++) {
+          const label = advNormalize(toPlainString(values[c]));
+          if (label) found[label] = c;
+        }
+        if (kFrom in found && kTo in found) {
+          headerRowNum = r;
+          cFrom = found[kFrom];
+          cTo   = found[kTo];
+          cKwd  = found[kKwd] || 0;
+          cSyn  = found[kSyn] || 0;
+          break;
+        }
+      }
+      if (headerRowNum < 0) {
+        streetWarnings.push(
+          'Στο φύλλο "Street Name Replace" δεν βρέθηκαν οι headers "Από"/"Σε" — παραλείπεται.'
+        );
+      } else if (!cKwd && !cSyn) {
+        streetWarnings.push(
+          'Στο φύλλο "Street Name Replace" λείπουν και οι δύο στήλες κλειδί ' +
+          '("Κωδ.Πελάτη" και "Συνεργάτης") — δεν θα γίνει καμία αντικατάσταση οδού.'
+        );
+      } else {
+        for (let r = headerRowNum + 1; r <= streetReplaceSheet.rowCount; r++) {
+          const row = streetReplaceSheet.getRow(r);
+          const rawKwd  = cKwd  ? toPlainString(row.getCell(cKwd).value).trim()  : '';
+          const rawSynStr  = cSyn ? toPlainString(row.getCell(cSyn).value)  : '';
+          const rawFromStr = toPlainString(row.getCell(cFrom).value);
+          const rawToStr   = toPlainString(row.getCell(cTo).value);
+
+          const synKey  = advNormalize(rawSynStr);
+          const fromKey = advNormalize(rawFromStr);
+          const toStr   = rawToStr.trim();
+
+          // Εντελώς κενή γραμμή → σιωπηλά αγνοείται
+          if (!rawKwd && !synKey && !fromKey && !toStr) continue;
+
+          if (!fromKey || !toStr) {
+            streetWarnings.push(`Γραμμή ${r}: κενό "Από" ή "Σε" — παραλείπεται.`);
+            continue;
+          }
+          if (!rawKwd && !synKey) {
+            streetWarnings.push(
+              `Γραμμή ${r}: κενά και "Κωδ.Πελάτη" και "Συνεργάτης" — παραλείπεται ` +
+              `(δεν επιτρέπεται global replacement).`
+            );
+            continue;
+          }
+
+          streetRules.push({
+            row: r,
+            kwd: rawKwd,        // συγκρίνεται ως trimmed string (κρατά leading zeros)
+            syn: synKey,        // normalized
+            from: fromKey,      // normalized
+            to: toStr,
+            specificity: (rawKwd ? 1 : 0) + (synKey ? 1 : 0)
+          });
+        }
+        // Most-specific first
+        streetRules.sort((a, b) => b.specificity - a.specificity);
+      }
+      if (streetWarnings.length) {
+        console.warn('[Street Name Replace] warnings:', streetWarnings);
+      }
+    }
+
+    // --- Χτίζουμε map από το RAW master (workbookMaster) ---
+    // key   : Κωδ.Πελάτη (trimmed string — διατηρεί leading zeros)
+    // value : { kwd: rawCode, syn: advNormalize(rawPartner) }
+    // Χρησιμοποιείται για το scoping του Street Replace ώστε η σύγκριση
+    // Συνεργάτη να γίνεται με την ΑΡΧΙΚΗ τιμή (πριν το Customer Name Replace).
+    const rawMasterByCode = new Map();
+    const rawMasterWb = state.context.workbookMaster;
+    if (rawMasterWb) {
+      rawMasterWb.worksheets.forEach(rws => {
+        const hvals = (rws.getRow(1).values || []).slice(1).map(v => toPlainString(v).trim().toLowerCase());
+        const iCode    = hvals.findIndex(x => x.replace(/\s/g,'').includes('κωδ.πελάτη'));
+        const iPartner = hvals.findIndex(x => x.includes('συνεργάτης'));
+        if (iCode < 0) return;
+        for (let r = 2; r <= rws.rowCount; r++) {
+          const row = rws.getRow(r);
+          const code = toPlainString(row.getCell(iCode + 1).value).trim();
+          if (!code) continue;
+          const syn = iPartner > -1 ? advNormalize(toPlainString(row.getCell(iPartner + 1).value)) : '';
+          // Αν υπάρχει ήδη ο κωδικός (π.χ. σε άλλο sheet), κρατάμε την πρώτη εμφάνιση
+          // εκτός αν η προηγούμενη τιμή Συνεργάτη ήταν κενή.
+          const existing = rawMasterByCode.get(code);
+          if (!existing || (!existing.syn && syn)) {
+            rawMasterByCode.set(code, { kwd: code, syn });
+          }
+        }
+      });
+    }
+
+    // Helper για αντικαταστάσεις
+   function applyReplacements(sheet, label) {
+  if (!sheet) return;
+  const headers = sheet.getRow(1).values.slice(1).map(x => x ? String(x).trim().toLowerCase() : '');
+  const idxPartner = headers.findIndex(x => x.includes('συνεργάτης'));
+  const idxOdos    = headers.findIndex(x => x.includes('οδός'));
+  const idxCode    = headers.findIndex(x => x.replace(/\s/g,'').includes('κωδ.πελάτη'));
+    const DEBUG_REPLACE = false;
+    if (DEBUG_REPLACE) console.log(`[${label}] Headers:`, headers, 'idxCode:', idxCode, 'idxPartner:', idxPartner, 'idxOdos:', idxOdos);
+
+  for (let i = 2; i <= sheet.rowCount; i++) {
+    const row = sheet.getRow(i);
+
+    // Partner (Customer Name Replace) — άθικτο
+    if (idxPartner > -1) {
+      const origVal = row.getCell(idxPartner+1).value;
+      const key = advNormalize(origVal);
+      if (customerReplaceMap.has(key)) {
+        if (DEBUG_REPLACE) console.log(`[${label}] MATCH Partner row ${i}: "${origVal}" → "${customerReplaceMap.get(key)}"`);
+        row.getCell(idxPartner+1).value = customerReplaceMap.get(key);
+      } else {
+        if (origVal && DEBUG_REPLACE) console.log(`[${label}] NO MATCH Partner row ${i}: "${origVal}" (normalized: "${key}")`);
+      }
+    }
+
+    // Street — scoping με βάση τις τιμές του RAW MASTER (πριν από οποιοδήποτε replace).
+    // Το Κωδ.Πελάτη της τρέχουσας γραμμής χρησιμοποιείται ως κλειδί στο rawMasterByCode
+    // για να βρούμε τον αρχικό Συνεργάτη.
+    if (idxOdos > -1 && streetRules.length) {
+      const origStreet = row.getCell(idxOdos+1).value;
+      const streetKey = advNormalize(toPlainString(origStreet));
+      if (streetKey) {
+        const rowKwd = idxCode > -1 ? toPlainString(row.getCell(idxCode+1).value).trim() : '';
+        const rawInfo = rawMasterByCode.get(rowKwd);
+        let rowSyn = rawInfo ? rawInfo.syn : '';
+        // Fallback: αν για κάποιο λόγο δεν βρέθηκε στο raw map (π.χ. συνθετική γραμμή),
+        // χρησιμοποιούμε την τρέχουσα τιμή του processed row.
+        if (!rowSyn && idxPartner > -1) {
+          rowSyn = advNormalize(toPlainString(row.getCell(idxPartner+1).value));
+        }
+        for (const rule of streetRules) {
+          if (rule.kwd && rule.kwd !== rowKwd) continue;
+          if (rule.syn && rule.syn !== rowSyn) continue;
+          if (rule.from !== streetKey) continue;
+          if (DEBUG_REPLACE) console.log(`[${label}] MATCH Street row ${i}: "${origStreet}" → "${rule.to}" (rule row ${rule.row})`);
+          row.getCell(idxOdos+1).value = rule.to;
+          break; // most-specific wins
+        }
+      }
+    }
+  }
+}
+
+
+    // Εφαρμογή σε "Πελάτες Ημέρας"
+    applyReplacements(sheet, "Πελάτες Ημέρας");
+
+    // Εφαρμογή σε "Πρακτορεια Ημέρας"
+    applyReplacements(window._lastPraktoreiaTempSheet, "Πρακτορεια Ημέρας");
+  }
+} catch (err) {
+  console.error('Σφάλμα στα Customer/Street Replace:', err);
+}
+// --- Re-render των πινάκων για να φανούν οι αντικαταστάσεις ---
+try {
+  // Άδειασμα του previewFinal
+  previewFinal.innerHTML = "";
+  const wrapper = document.createElement("div");
+
+  // Πελάτες Ημέρας
+  const pelatesDiv = document.createElement("div");
+  renderSheetToContainer({
+    sheet: sheet,
+    container: pelatesDiv,
+    key: 'Πελάτες Ημέρας',
+    initialRows: FINAL_INITIAL_ROWS,
+    maxCols: FINAL_MAX_COLS
+  });
+  wrapper.appendChild(pelatesDiv);
+
+  // Πρακτορεία Ημέρας
+  const praktoreiaDiv = document.createElement("div");
+  renderSheetToContainer({
+    sheet: window._lastPraktoreiaTempSheet,
+    container: praktoreiaDiv,
+    key: 'Πρακτορεια Ημέρας',
+    initialRows: FINAL_INITIAL_ROWS,
+    maxCols: FINAL_MAX_COLS
+  });
+  wrapper.appendChild(praktoreiaDiv);
+
+  // Επανατοποθέτηση στο preview
+  previewFinal.appendChild(wrapper);
+} catch (e) {
+  console.error("Σφάλμα στο re-render των πινάκων:", e);
+}
+
+
+      // --- ΤΕΛΟΣ ΝΕΟΥ FEATURE ---
+
+    }
+
+    async function tryLoadWorkbooks() {
+      if (!state.files.master || !state.files.info) return;
+      previewFinal.innerHTML = `<p>Φορτώνω και ελέγχω αρχεία…</p>`;
+      setStatus('Φόρτωση αρχείων', true);
+      try {
+        const wbM = new ExcelJS.Workbook();
+        await wbM.xlsx.load(await state.files.master.arrayBuffer());
+        const wbI = new ExcelJS.Workbook();
+        await wbI.xlsx.load(await state.files.info.arrayBuffer());
+        state.context.workbookMaster = wbM;
+        state.context.workbookInfo = wbI;
+
+        if (getBaseName(state.files.info).toUpperCase() !== 'INFO') {
+
+          showModal('Σφάλμα', `Το INFO αρχείο πρέπει να ονομάζεται <strong>INFO.xlsx</strong> ή <strong>INFO.xls</strong>.`);
+          infoDrop.classList.add('error');
+          setStatus('', false);
+          return;
+        }
+
+  setStatus('Δημιουργώ processed αντίγραφο MASTER (UNMERGE → delete empty → dedupe)...', true);
+  state.context.processedMaster = await processMasterToCopy(state.context.workbookMaster, state.context.workbookInfo);
+  setStatus('Processed αντίγραφο έτοιμο', false);
+
+        // auto-show final
+        renderSelectedMasterFinal();
+
+      } catch (err) {
+        showModal('Σφάλμα ανάγνωσης', `Σφάλμα κατά την επεξεργασία των αρχείων: ${err.message}`);
+        console.error(err);
+      } finally {
+        setStatus('', false);
+      }
+    }
+
+    masterInput.addEventListener('change', async (e) => {
+      masterDrop.classList.remove('error','loaded');
+      const file = e.target.files[0] || null;
+  state.files.master = null;
+  state.context.workbookMaster = null;
+  state.context.processedMaster = null;
+  window._lastPraktoreiaTempSheet = null;
+  window._lastPraktoreiaTempSheet2 = null;
+  window._lastPraktoreiaTempSheet3 = null;
+      if (!file) { clearBoxUI(masterDrop); return; }
+      if (getBaseName(file).toUpperCase() === 'INFO') {
+        masterDrop.classList.add('error');
+        showModal('Μη έγκυρο αρχείο', `Το αρχείο ${file.name} δεν μπορεί να χρησιμοποιηθεί εδώ. Μην επιλέξετε το INFO αρχείο στο MASTER.`);
+        return;
+      }
+      if (!isValidExcel(file)) {
+        masterDrop.classList.add('error');
+        showModal('Μη έγκυρος τύπος αρχείου', `Μη έγκυρος τύπος αρχείου: ${file.name}`);
+        return;
+      }
+      try {
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(await file.arrayBuffer());
+        const sheet = wb.worksheets[0];
+        const headerRow = sheet.getRow(1).values.slice(1).map(toPlainString);
+        const headerNorms = headerRow.map(normalize);
+        const missing = [];
+        requiredCols.forEach((col, idx) => {
+          const normalizedCol = normalize(col);
+          if (!headerNorms.includes(normalizedCol)) missing.push(col);
+        });
+        if (missing.length) {
+          masterDrop.classList.add('error');
+          showModal('Λείπουν στήλες', `Λείπουν στήλες: <strong>${missing.join(', ')}</strong>.<br>Παρακαλώ εισάγετε ένα αρχείο με τις απαιτούμενες στήλες <strong>${requiredCols.join(', ')}</strong>.`);
+          return;
+        }
+      } catch (err) {
+        masterDrop.classList.add('error');
+        showModal('Σφάλμα ανάγνωσης', `Σφάλμα ανάγνωσης του MASTER: ${err.message}`);
+        return;
+      }
+      masterDrop.classList.add('loaded');
+      masterFileName.textContent = file.name;
+      state.files.master = file;
+      tryLoadWorkbooks();
+    });
+
+    infoInput.addEventListener('change', async (e) => {
+      infoDrop.classList.remove('error','loaded');
+      const file = e.target.files[0] || null;
+  state.files.info = null;
+  state.context.workbookInfo = null;
+  state.context.processedMaster = null;
+  window._lastPraktoreiaTempSheet = null;
+  window._lastPraktoreiaTempSheet2 = null;
+  window._lastPraktoreiaTempSheet3 = null;
+      if (!file) { clearBoxUI(infoDrop); return; }
+      if (!isValidExcel(file) || getBaseName(file).toUpperCase() !== 'INFO') {
+        infoDrop.classList.add('error');
+        showModal('Μη έγκυρο INFO', `Το INFO αρχείο πρέπει να ονομάζεται <strong>INFO.xlsx</strong> ή <strong>INFO.xls</strong>.`);
+        return;
+      }
+      infoDrop.classList.add('loaded');
+      infoFileName.textContent = file.name;
+      state.files.info = file;
+      tryLoadWorkbooks();
+    });
+
+    btnClear.addEventListener('click', () => {
+      state.files.master = null;
+      state.files.info = null;
+      state.context.workbookMaster = null;
+      state.context.workbookInfo = null;
+      state.context.processedMaster = null;
+      window._lastPraktoreiaTempSheet = null;
+      window._lastPraktoreiaTempSheet2 = null;
+      window._lastPraktoreiaTempSheet3 = null;
+      masterInput.value = '';
+      infoInput.value = '';
+      clearBoxUI(masterDrop);
+      clearBoxUI(infoDrop);
+      previewFinal.innerHTML = `<p class="note">Καθαρίστηκε η κατάσταση.</p>`;
+    });
+
+    document.addEventListener('change', (e) => {
+      if (e.target && e.target.id === 'masterSheetSelect') {
+        renderSelectedMasterFinal();
+      }
+    });
+
+    function scrollContainer(container, deltaPx) {
+      if (!container) return;
+      container.scrollBy({ left: deltaPx, behavior: SCROLL_SMOOTH ? 'smooth' : 'auto' });
+    }
+
+    previewFinal.addEventListener('keydown', (ev) => {
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); scrollContainer(previewFinal, -200); }
+      if (ev.key === 'ArrowRight') { ev.preventDefault(); scrollContainer(previewFinal, 200); }
+    });
+
+    function updateScrollButtons(container, leftBtn, rightBtn) {
+      if (!container) return;
+      const atLeft = container.scrollLeft <= 0;
+      const atRight = Math.ceil(container.scrollLeft + container.clientWidth) >= container.scrollWidth;
+      leftBtn.style.display = atLeft ? 'none' : 'flex';
+      rightBtn.style.display = atRight ? 'none' : 'flex';
+    }
+
+    function wireScrollVisibility(container, leftBtn, rightBtn) {
+      updateScrollButtons(container, leftBtn, rightBtn);
+      container.addEventListener('scroll', () => updateScrollButtons(container, leftBtn, rightBtn));
+      const ro = new ResizeObserver(() => updateScrollButtons(container, leftBtn, rightBtn));
+      ro.observe(container);
+      const mo = new MutationObserver(() => updateScrollButtons(container, leftBtn, rightBtn));
+      mo.observe(container, { childList: true, subtree: true });
+    }
+
+    // wireScrollVisibility(previewFinal, finalScrollLeft, finalScrollRight);
+
+    clearBoxUI(masterDrop);
+    clearBoxUI(infoDrop);
+    // === FIXED SCROLL BUTTONS (window overlay, always aligned with preview/table) ===
+  (function() {
+    // Δημιουργία κουμπιών αν δεν υπάρχουν
+    let leftBtn = document.getElementById('fixedScrollLeft');
+    let rightBtn = document.getElementById('fixedScrollRight');
+    if (!leftBtn) {
+      leftBtn = document.createElement('div');
+      leftBtn.id = 'fixedScrollLeft';
+      leftBtn.className = 'scroll-btn scroll-left';
+      leftBtn.title = 'Scroll Left';
+      leftBtn.textContent = '◀';
+      leftBtn.style.position = 'fixed';
+      leftBtn.style.zIndex = '10000';
+      leftBtn.style.display = 'none';
+      document.body.appendChild(leftBtn);
+    }
+    if (!rightBtn) {
+      rightBtn = document.createElement('div');
+      rightBtn.id = 'fixedScrollRight';
+      rightBtn.className = 'scroll-btn scroll-right';
+      rightBtn.title = 'Scroll Right';
+      rightBtn.textContent = '▶';
+      rightBtn.style.position = 'fixed';
+      rightBtn.style.zIndex = '10000';
+      rightBtn.style.display = 'none';
+      document.body.appendChild(rightBtn);
+    }
+    window.updateBtnPositions = function updateBtnPositions() {
+      const preview = document.getElementById('previewFinal');
+      const sheetTitle = document.querySelector('.sheet-title');
+      if (!preview || !sheetTitle) return;
+      const previewRect = preview.getBoundingClientRect();
+      const titleRect = sheetTitle.getBoundingClientRect();
+      // Top: ίδια ευθεία με sheet-title
+      const top = titleRect.top + window.scrollY;
+      // Left: αριστερό άκρο του preview
+      leftBtn.style.top = (top) + 'px';
+      leftBtn.style.left = (previewRect.left - 8) + 'px';
+      // Right: δεξί άκρο του preview (πάνω από το ορατό scroll area)
+      rightBtn.style.top = (top) + 'px';
+      rightBtn.style.left = (previewRect.right - rightBtn.offsetWidth + 8) + 'px';
+      // Εμφάνιση/κρύψιμο ανάλογα με το scroll
+      const atLeft = preview.scrollLeft <= 0;
+      const atRight = Math.ceil(preview.scrollLeft + preview.clientWidth) >= preview.scrollWidth;
+      leftBtn.style.display = atLeft ? 'none' : 'flex';
+      rightBtn.style.display = atRight ? 'none' : 'flex';
+    };
+    // Scroll actions
+    leftBtn.onclick = function(e) {
+      e.stopPropagation();
+      const preview = document.getElementById('previewFinal');
+      preview.scrollBy({ left: -SCROLL_STEP_PX, behavior: SCROLL_SMOOTH ? 'smooth' : 'auto' });
+      setTimeout(window.updateBtnPositions, 350);
+    };
+    rightBtn.onclick = function(e) {
+      e.stopPropagation();
+      const preview = document.getElementById('previewFinal');
+      preview.scrollBy({ left: SCROLL_STEP_PX, behavior: SCROLL_SMOOTH ? 'smooth' : 'auto' });
+      setTimeout(window.updateBtnPositions, 350);
+    };
+    // Ενημέρωση θέσης σε scroll/resize
+    window.addEventListener('resize', window.updateBtnPositions);
+    window.addEventListener('scroll', window.updateBtnPositions);
+    document.getElementById('previewFinal').addEventListener('scroll', window.updateBtnPositions);
+    // Ενημέρωση μετά από render
+    setTimeout(window.updateBtnPositions, 800);
+    setTimeout(window.updateBtnPositions, 0);
+  })();
+  </script>
 </body>
 </html>
