@@ -489,13 +489,18 @@
   // --- ΕΛΕΓΧΟΣ SPAR για ΜΕ BAZAAR ---
   // Declare praktoreiaSheet for use throughout
   let praktoreiaSheet = null;
-      // Βρες το φύλλο SPAR
+      // SPAR lookup: δύο επίπεδα
+      //   sparWildcardByCode       : κωδικός μόνο  → όλα τα υποκαταστήματα του πελάτη
+      //   sparSpecificByCodeOdos   : κωδικός+οδός → μόνο η συγκεκριμένη γραμμή master
+      // Priority at lookup: specific > wildcard
+      // Strict error: duplicate keys με διαφορετική Περιοχή → alert + throw
+      const DEBUG_SPAR = false;
       const sparSheet = infoWb.getWorksheet('SPAR');
-      let sparCodeToRegion = new Map();
+      let sparWildcardByCode = new Map();
+      let sparSpecificByCodeOdos = new Map();
       if (sparSheet) {
-  // console.log('[DEBUG] Βρέθηκε φύλλο SPAR:', sparSheet.name, 'rowCount:', sparSheet.rowCount);
+        if (DEBUG_SPAR) console.log('[SPAR] Βρέθηκε φύλλο SPAR rowCount:', sparSheet.rowCount);
         // Σάρωσε τις πρώτες 5 γραμμές για να βρεις header row με "Κωδ.Πελάτη" και "Περιοχή"
-        let sparHeaderRow = null;
         let sparHeaderVals = [];
         let sparHeaderRowNum = -1;
         for (let r = 1; r <= Math.min(5, sparSheet.rowCount); r++) {
@@ -511,40 +516,176 @@
             if (val.replace(/\s/g, '').toLowerCase().includes('περιοχή')) foundRegion = true;
           }
           if (foundCode && foundRegion) {
-            sparHeaderRow = row;
             sparHeaderVals = vals;
             sparHeaderRowNum = r;
             break;
           }
         }
-        if (!sparHeaderRow) {
-          // console.log('[DEBUG] Δεν βρέθηκε header row με "Κωδ.Πελάτη" και "Περιοχή" στις πρώτες 5 γραμμές του SPAR.');
-        } else {
-          // console.log('[DEBUG] SPAR header row found at row', sparHeaderRowNum, 'values:', sparHeaderVals);
-        }
-        // Βρες τα indexes των στηλών "Κωδ.Πελάτη" και "Περιοχή"
-        let idxSparCode = -1, idxSparRegion = -1;
+        // Βρες indexes των στηλών "Κωδ.Πελάτη", "Περιοχή", "Οδός"
+        let idxSparCode = -1, idxSparRegion = -1, idxSparOdos = -1;
         for (let i = 0; i < sparHeaderVals.length; i++) {
           const x = sparHeaderVals[i];
-          if (x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη')) idxSparCode = i + 1;
-          if (x && x.replace(/\s/g, '').toLowerCase().includes('περιοχή')) idxSparRegion = i + 1;
+          if (!x) continue;
+          const norm = x.replace(/\s/g, '').toLowerCase();
+          if (norm.includes('κωδ.πελάτη')) idxSparCode = i + 1;
+          else if (norm.includes('περιοχή')) idxSparRegion = i + 1;
+          else if (norm === 'οδός' || norm === 'οδος') idxSparOdos = i + 1;
         }
-  // console.log('[DEBUG] idxSparCode:', idxSparCode, 'idxSparRegion:', idxSparRegion);
-        // Ξεκίνα από τη γραμμή μετά το header
+        if (DEBUG_SPAR) console.log('[SPAR] indexes code/region/odos:', idxSparCode, idxSparRegion, idxSparOdos);
         const startRow = sparHeaderRowNum > 0 ? sparHeaderRowNum + 1 : 2;
         for (let i = startRow; i <= sparSheet.rowCount; i++) {
           const row = sparSheet.getRow(i);
-          let code = idxSparCode > -1 && row.getCell(idxSparCode).value ? toPlainString(row.getCell(idxSparCode).value).trim() : '';
-          let region = idxSparRegion > -1 && row.getCell(idxSparRegion).value ? toPlainString(row.getCell(idxSparRegion).value).trim() : '';
-          if (code && region) {
-            sparCodeToRegion.set(normalize(code), region);
-            // console.log('[DEBUG] Προστέθηκε SPAR code:', code, '| normalized:', normalize(code), '| region:', region);
+          const code = idxSparCode > -1 && row.getCell(idxSparCode).value ? toPlainString(row.getCell(idxSparCode).value).trim() : '';
+          const region = idxSparRegion > -1 && row.getCell(idxSparRegion).value ? toPlainString(row.getCell(idxSparRegion).value).trim() : '';
+          const odos = idxSparOdos > -1 && row.getCell(idxSparOdos).value ? toPlainString(row.getCell(idxSparOdos).value).trim() : '';
+          if (!code || !region) continue;
+          const nCode = normalize(code);
+          const nOdos = normalize(odos);
+          if (nOdos) {
+            // specific rule: Κωδ + Οδός
+            const key = nCode + '|' + nOdos;
+            if (sparSpecificByCodeOdos.has(key)) {
+              const prev = sparSpecificByCodeOdos.get(key);
+              if (prev !== region) {
+                const msg = 'Σφάλμα στο φύλλο SPAR: βρέθηκαν δύο γραμμές για τον ίδιο Κωδ.Πελάτη="' + code + '" και Οδός="' + odos + '" αλλά με διαφορετική Περιοχή ("' + prev + '" vs "' + region + '"). Διόρθωσε το INFO.xlsx (κράτα μόνο μία γραμμή ανά ζεύγος Κωδ+Οδός) και ξαναφόρτωσε.';
+                alert(msg);
+                throw new Error(msg);
+              }
+            } else {
+              sparSpecificByCodeOdos.set(key, region);
+              if (DEBUG_SPAR) console.log('[SPAR] specific rule:', code, '|', odos, '→', region);
+            }
+          } else {
+            // wildcard rule: μόνο Κωδ
+            if (sparWildcardByCode.has(nCode)) {
+              const prev = sparWildcardByCode.get(nCode);
+              if (prev !== region) {
+                const msg = 'Σφάλμα στο φύλλο SPAR: βρέθηκαν δύο γραμμές wildcard (χωρίς Οδός) για τον ίδιο Κωδ.Πελάτη="' + code + '" αλλά με διαφορετική Περιοχή ("' + prev + '" vs "' + region + '"). Διόρθωσε το INFO.xlsx και ξαναφόρτωσε.';
+                alert(msg);
+                throw new Error(msg);
+              }
+            } else {
+              sparWildcardByCode.set(nCode, region);
+              if (DEBUG_SPAR) console.log('[SPAR] wildcard rule:', code, '→', region);
+            }
           }
         }
-  // console.log('[DEBUG] Τελικός sparCodeToRegion map:', Array.from(sparCodeToRegion.entries()));
+        if (DEBUG_SPAR) {
+          console.log('[SPAR] wildcard map:', Array.from(sparWildcardByCode.entries()));
+          console.log('[SPAR] specific map:', Array.from(sparSpecificByCodeOdos.entries()));
+        }
       } else {
-  // console.log('[DEBUG] Δεν βρέθηκε φύλλο SPAR στο INFO.');
+        if (DEBUG_SPAR) console.log('[SPAR] Δεν βρέθηκε φύλλο SPAR στο INFO.');
       }
+
+      // --- ΕΛΕΓΧΟΣ ΣΥΓΚΡΟΥΣΕΩΝ SPAR ↔ TRANS ---
+      // Ένα υποκατάστημα δεν γίνεται να εξυπηρετείται ΚΑΙ με δικό μας φορτηγό (SPAR) ΚΑΙ μέσω μεταφορικής (TRANS).
+      //   Specific conflict : SPAR (Κωδ, Οδός) + TRANS με ίδιο (Κωδ, Οδός) και μη κενό Συνεργάτης
+      //   Wildcard conflict : SPAR wildcard (Κωδ μόνο) + TRANS με ίδιο Κωδ και μη κενά Συνεργάτης+Οδός
+      if (sparWildcardByCode.size > 0 || sparSpecificByCodeOdos.size > 0) {
+        const transSheetCheck = infoWb.getWorksheet('TRANS');
+        if (transSheetCheck) {
+          const thRow = transSheetCheck.getRow(1);
+          const thVals = thRow.values.slice(1).map(x => (x ? String(x).trim() : ''));
+          const iCode = thVals.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('κωδ.πελάτη'));
+          const iPartner = thVals.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('συνεργάτης'));
+          const iOdos = thVals.findIndex(x => x && x.replace(/\s/g, '').toLowerCase().includes('υποκατάστημα') && x.toLowerCase().includes('οδός'));
+          if (iCode > -1 && iPartner > -1 && iOdos > -1) {
+            const conflicts = [];
+            for (let r = 2; r <= transSheetCheck.rowCount; r++) {
+              const row = transSheetCheck.getRow(r);
+              const tCode = toPlainString(row.getCell(iCode + 1).value).trim();
+              const tPartner = toPlainString(row.getCell(iPartner + 1).value).trim();
+              const tOdos = toPlainString(row.getCell(iOdos + 1).value).trim();
+              if (!tCode || !tPartner) continue;
+              const nCode = normalize(tCode);
+              const nOdos = normalize(tOdos);
+              // Specific conflict
+              if (nOdos) {
+                const key = nCode + '|' + nOdos;
+                if (sparSpecificByCodeOdos.has(key)) {
+                  conflicts.push({
+                    type: 'specific',
+                    code: tCode,
+                    odos: tOdos,
+                    transPartner: tPartner,
+                    sparRegion: sparSpecificByCodeOdos.get(key)
+                  });
+                  continue;
+                }
+              }
+              // Wildcard conflict — TRANS γραμμή πρέπει να έχει και τα 3 γεμάτα
+              if (nOdos && sparWildcardByCode.has(nCode)) {
+                conflicts.push({
+                  type: 'wildcard',
+                  code: tCode,
+                  odos: tOdos,
+                  transPartner: tPartner,
+                  sparRegion: sparWildcardByCode.get(nCode)
+                });
+              }
+            }
+            if (conflicts.length > 0) {
+              // Καθάρισε duplicates (ίδιος Κωδ+Οδός+Συνεργάτης)
+              const seen = new Set();
+              const unique = [];
+              for (const c of conflicts) {
+                const k = normalize(c.code) + '|' + normalize(c.odos) + '|' + normalize(c.transPartner);
+                if (seen.has(k)) continue;
+                seen.add(k);
+                unique.push(c);
+              }
+              // Console full list
+              console.error('[SPAR↔TRANS CONFLICTS] Total:', unique.length);
+              console.table(unique);
+              // HTML για το modal
+              const escapeHtml = (s) => String(s == null ? '' : s)
+                .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+              const rowsHtml = unique.map(c => {
+                const odosTxt = c.odos || '(κενό — wildcard κανόνας)';
+                const spar = c.type === 'specific'
+                  ? `SPAR κανόνας: Κωδ+Οδός → Περιοχή "${escapeHtml(c.sparRegion)}"`
+                  : `SPAR wildcard: Κωδ → Περιοχή "${escapeHtml(c.sparRegion)}"`;
+                return `<li style="margin-bottom:0.5rem">
+                  <strong>Πελάτης:</strong> ${escapeHtml(c.code)} &nbsp;—&nbsp;
+                  <strong>Υποκατάστημα:</strong> ${escapeHtml(odosTxt)}<br>
+                  <span style="color:#555;font-size:0.92em">
+                    ${spar} &nbsp;·&nbsp; TRANS Συνεργάτης: "${escapeHtml(c.transPartner)}"
+                  </span>
+                </li>`;
+              }).join('');
+              const html = `
+                <div>
+                  <p style="margin-top:0">
+                    Βρέθηκαν πελάτες/υποκαταστήματα που υπάρχουν ταυτόχρονα στο φύλλο
+                    <strong>SPAR</strong> και στο φύλλο <strong>TRANS</strong>.
+                  </p>
+                  <p>
+                    Δεν γίνεται το ίδιο υποκατάστημα να παραδίδεται ΚΑΙ με δικό μας φορτηγό
+                    (SPAR) ΚΑΙ μέσω μεταφορικής (TRANS). Πρέπει να διαλέξεις ένα από τα δύο.
+                  </p>
+                  <p><strong>Τι να κάνεις:</strong></p>
+                  <ol style="margin-top:0.2rem">
+                    <li>Άνοιξε το αρχείο <strong>INFO.xlsx</strong>.</li>
+                    <li>Για κάθε γραμμή παρακάτω, διέγραψέ τη είτε από το SPAR είτε από το TRANS — όπου δεν ανήκει.</li>
+                    <li>Αποθήκευσε και ξαναφόρτωσε το αρχείο στην εφαρμογή.</li>
+                  </ol>
+                  <p style="margin-top:0.8rem"><strong>Λίστα συγκρούσεων (σύνολο: ${unique.length})</strong></p>
+                  <div style="max-height:40vh;overflow:auto;border:1px solid #ccc;padding:0.6rem;background:#fafafa;border-radius:4px">
+                    <ul style="margin:0;padding-left:1.1rem">${rowsHtml}</ul>
+                  </div>
+                </div>
+              `;
+              showModal('Σύγκρουση μεταξύ SPAR και TRANS', html);
+              const err = new Error('SPAR↔TRANS conflict: ' + unique.length + ' γραμμές');
+              err.sparTransConflict = true;
+              throw err;
+            }
+          }
+        }
+      }
+
       // --- ΕΛΕΓΧΟΣ RETAIL για ΤΡ ---
       // Βρες το φύλλο RETAIL
       const retailSheet = infoWb.getWorksheet('RETAIL');
@@ -941,11 +1082,24 @@
           }
 
           // --- ΕΛΕΓΧΟΣ SPAR για ΜΕ BAZAAR ---
+          // Priority: specific (Κωδ+Οδός) > wildcard (Κωδ μόνο)
           let bazaarValue = '';
           if (mCode) {
             const normCode = normalize(mCode);
-            if (sparCodeToRegion.has(normCode)) {
-              bazaarValue = sparCodeToRegion.get(normCode);
+            const normMStreet = normalize(mStreet);
+            if (normMStreet) {
+              const key = normCode + '|' + normMStreet;
+              if (sparSpecificByCodeOdos.has(key)) {
+                bazaarValue = sparSpecificByCodeOdos.get(key);
+                if (DEBUG_SPAR) console.log('[SPAR] specific hit:', mCode, '|', mStreet, '→', bazaarValue);
+              } else if (sparWildcardByCode.has(normCode)) {
+                bazaarValue = sparWildcardByCode.get(normCode);
+                if (DEBUG_SPAR) console.log('[SPAR] wildcard hit (no specific):', mCode, '|', mStreet, '→', bazaarValue);
+              }
+            } else if (sparWildcardByCode.has(normCode)) {
+              // Master row χωρίς Οδός → μόνο wildcard μπορεί να ταιριάξει
+              bazaarValue = sparWildcardByCode.get(normCode);
+              if (DEBUG_SPAR) console.log('[SPAR] wildcard hit (empty street):', mCode, '→', bazaarValue);
             }
           }
 
@@ -3277,8 +3431,13 @@ try {
         renderSelectedMasterFinal();
 
       } catch (err) {
-        showModal('Σφάλμα ανάγνωσης', `Σφάλμα κατά την επεξεργασία των αρχείων: ${err.message}`);
-        console.error(err);
+        if (err && err.sparTransConflict) {
+          // Το modal έχει ήδη εμφανιστεί με αναλυτική λίστα από τον SPAR↔TRANS έλεγχο.
+          console.error(err);
+        } else {
+          showModal('Σφάλμα ανάγνωσης', `Σφάλμα κατά την επεξεργασία των αρχείων: ${err.message}`);
+          console.error(err);
+        }
       } finally {
         setStatus('', false);
       }
