@@ -985,6 +985,9 @@
       const newWb = new ExcelJS.Workbook();
   const removedRowsLog = [];
   const odosOnlyLog = [];
+  // ΝΕΟ: συλλογή raw δεδομένων (πριν το BlackList) για το φύλλο "Πελάτες ανά Περιοχή".
+  // cityMissing = true αν σε κανένα master sheet δεν βρέθηκε header «Πόλη».
+  newWb._rawRegion = { cityMissing: true, sheets: new Map() };
 
       // Για κάθε φύλλο MASTER
       masterWb.worksheets.forEach((ws) => {
@@ -998,9 +1001,14 @@
   const normCode = normalize('Κωδ.Πελάτη');
   const normPartner = normalize('Συνεργάτης');
   const normStreet = normalize('Οδός');
+  const normCity = normalize('Πόλη');
   const idxCode = headerNorms.findIndex(x => x === normCode);
   const idxPartner = headerNorms.findIndex(x => x === normPartner);
   const idxStreet = headerNorms.findIndex(x => x === normStreet);
+  const idxCity = headerNorms.findIndex(x => x === normCity);
+  if (idxCity > -1) newWb._rawRegion.cityMissing = false;
+  const rawRegionRowsForSheet = [];
+  newWb._rawRegion.sheets.set(ws.name, rawRegionRowsForSheet);
 
         // Βήμα 2: Διαγραφή γραμμών με κενό 'Κωδ.Πελάτη'
         const rowsToKeep = [];
@@ -1102,6 +1110,18 @@
               if (DEBUG_SPAR) console.log('[SPAR] wildcard hit (empty street):', mCode, '→', bazaarValue);
             }
           }
+
+          // ΝΕΟ: συλλογή raw εγγραφής για "Πελάτες ανά Περιοχή" (όλες οι deduped, χωρίς BlackList).
+          // Κρατάμε ΑΡΧΙΚΗ Οδός & Πόλη όπως είναι στο master input.
+          const cityVal = idxCity > -1 ? toPlainString(row.getCell(idxCity).value) : '';
+          rawRegionRowsForSheet.push({
+            mCode: mCode || '',
+            mPartner: mPartner || '',
+            originalOdos: mStreet || '',
+            polh: cityVal || '',
+            trigValue,
+            bazaarValue
+          });
 
           let toDelete = false;
           let matchedCase = null;
@@ -1818,6 +1838,318 @@
               }
             }
           }
+
+          // ===== ΝΕΟΙ HELPERS: 4-bucket sort + bottom borders + fixed widths =====
+          function isLatinFirst(v) {
+            const s = (v == null ? '' : v).toString().trim();
+            return /^[A-Za-z]/.test(s.charAt(0));
+          }
+          function isGreekFirst(v) {
+            const s = (v == null ? '' : v).toString().trim();
+            return /^[Α-Ωα-ωΆΈΉΊΌΎΏάέήίόύώϊΐΰΪΫ]/.test(s.charAt(0));
+          }
+          function partnerCompare(a, b) {
+            const aLat = isLatinFirst(a), bLat = isLatinFirst(b);
+            const aGr = isGreekFirst(a), bGr = isGreekFirst(b);
+            if (aLat && !bLat) return -1;
+            if (!aLat && bLat) return 1;
+            if (aGr && !bGr) return 1;
+            if (!aGr && bGr) return -1;
+            return (a == null ? '' : a).toString().localeCompare((b == null ? '' : b).toString(), aLat ? 'en' : 'el');
+          }
+          function bazaarCompare(a, b) {
+            return (a == null ? '' : a).toString().localeCompare((b == null ? '' : b).toString(), 'el');
+          }
+          // Σειρά προτεραιότητας assignment: BAZAAR > ΤΡ > Transport > none
+          function categorizeGroupEntries(entries) {
+            const e = entries && entries[0];
+            if (!e) return 'none';
+            if ((e.bazaarVal || '').toString().trim()) return 'bazaar';
+            if ((e.trVal || '').toString().trim()) return 'tr';
+            if (e.hasTransport) return 'transport';
+            return 'none';
+          }
+          // Επιστρέφει 4 ομάδες σε σταθερή σειρά εξόδου: transport, none, bazaar, tr.
+          function buildBucketsFromGroups(groupOrderKeys, groupMap) {
+            const buckets = { transport: [], none: [], bazaar: [], tr: [] };
+            for (const key of groupOrderKeys) {
+              const entries = groupMap.get(key);
+              if (!entries || !entries.length) continue;
+              const cat = categorizeGroupEntries(entries);
+              buckets[cat].push({ key, entries });
+            }
+            buckets.transport.sort((g1, g2) => {
+              const t1 = (g1.entries[0].transportVal || '').toString();
+              const t2 = (g2.entries[0].transportVal || '').toString();
+              const c = t1.localeCompare(t2, 'el');
+              if (c) return c;
+              return partnerCompare(g1.entries[0].synergatisVal, g2.entries[0].synergatisVal);
+            });
+            buckets.none.sort((g1, g2) => partnerCompare(g1.entries[0].synergatisVal, g2.entries[0].synergatisVal));
+            buckets.bazaar.sort((g1, g2) => {
+              const c = bazaarCompare(g1.entries[0].bazaarVal, g2.entries[0].bazaarVal);
+              if (c) return c;
+              return partnerCompare(g1.entries[0].synergatisVal, g2.entries[0].synergatisVal);
+            });
+            buckets.tr.sort((g1, g2) => partnerCompare(g1.entries[0].synergatisVal, g2.entries[0].synergatisVal));
+            return buckets;
+          }
+          // Παχύ μαύρο medium bottom border σε ολόκληρες γραμμές-όρια.
+          function applyBucketBottomBorders(sheet, boundaryRowNumbers) {
+            if (!sheet || !boundaryRowNumbers) return;
+            const colCount = sheet.columnCount || 0;
+            const medium = { style: 'medium', color: { argb: 'FF000000' } };
+            for (const r of boundaryRowNumbers) {
+              if (!r || r < 1) continue;
+              const row = sheet.getRow(r);
+              for (let c = 1; c <= colCount; c++) {
+                const cell = row.getCell(c);
+                const border = { ...(cell.border || {}) };
+                border.bottom = medium;
+                cell.border = border;
+              }
+            }
+          }
+          // Σταθερά πλάτη στηλών — εφαρμόζεται ΤΕΛΕΥΤΑΙΟ για να μην το χαλάει το best-fit.
+          function enforceFixedColumnWidths(sheet, headerValues) {
+            if (!sheet || !Array.isArray(headerValues)) return;
+            const fixed = {
+              [normalize('ΤΡ')]: 3.00,
+              [normalize('Α')]: 4.59,
+              [normalize('Β')]: 4.59,
+              [normalize('ΕΛ')]: 4.59,
+              [normalize('ΣΟΚ')]: 4.59,
+              [normalize('Ψ')]: 4.59,
+              [normalize('ΚΤΨ')]: 4.59,
+              [normalize('+')]: 4.59
+            };
+            for (let i = 0; i < headerValues.length; i++) {
+              const n = normalize(headerValues[i]);
+              if (fixed[n] !== undefined) {
+                sheet.getColumn(i + 1).width = fixed[n];
+              }
+            }
+          }
+
+          // Δημιουργία φύλλου "Πελάτες ανά Περιοχή" — ίδιο layout με Πελάτες Ημέρας
+          // + στήλη "Πόλη" αμέσως μετά την "Οδός". Χωρίς BlackList, με ΑΡΧΙΚΗ Οδός.
+          function buildPelatesAnaPerioxiSheet({ wb, proc, dateStr, transportKeySet, ONE_CM_IN_INCHES }) {
+            const sheet = wb.addWorksheet('Πελάτες ανά Περιοχή');
+            Object.assign(sheet.pageSetup, {
+              orientation: 'portrait',
+              fitToPage: true,
+              fitToWidth: 1,
+              fitToHeight: 1,
+              margins: {
+                top: ONE_CM_IN_INCHES, bottom: ONE_CM_IN_INCHES,
+                left: ONE_CM_IN_INCHES, right: ONE_CM_IN_INCHES,
+                header: 0.3, footer: 0.3
+              }
+            });
+            const header = ['ID_Παραγγελίας','Κωδ.Πελάτη','Συνεργάτης','ΤΡ','ΜΕ BAZAAR','Οδός','Πόλη','Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'];
+            const headerColCount = header.length;
+            const idxSyn = 2; // 0-based: "Συνεργάτης"
+            // Date row
+            const dateRowArr = Array(headerColCount).fill('');
+            dateRowArr[idxSyn] = dateStr;
+            const dateRowObj = sheet.addRow(dateRowArr);
+            dateRowObj.getCell(idxSyn + 1).font = { name: 'Arial', size: 16, bold: true };
+            dateRowObj.getCell(idxSyn + 1).alignment = { vertical: 'middle', horizontal: 'center' };
+            const headerRowObj = sheet.addRow(header);
+            headerRowObj.height = 25;
+
+            const rawRegion = proc && proc._rawRegion ? proc._rawRegion : { cityMissing: true, sheets: new Map() };
+            const sel = document.getElementById('masterSheetSelect');
+            const idx = sel ? Number(sel.value) : 0;
+            const sheetName = (proc && proc.worksheets[idx]) ? proc.worksheets[idx].name : null;
+            const rawRows = (sheetName && rawRegion.sheets.get(sheetName)) || [];
+
+            // hash function για ID
+            function hashString(str) {
+              let h = 5381;
+              for (let i = 0; i < str.length; i++) h = ((h << 5) + h) + str.charCodeAt(i);
+              return Math.abs(h);
+            }
+
+            // Στήσιμο entries + group by (Κωδ+Συνεργάτης), όπως στα Πελάτες.
+            const groupMap = new Map();
+            const groupOrder = [];
+            for (let i = 0; i < rawRows.length; i++) {
+              const r = rawRows[i];
+              const id = hashString(String(r.mCode) + String(r.originalOdos));
+              const rowValues = [
+                id, r.mCode, r.mPartner, r.trigValue, r.bazaarValue,
+                r.originalOdos, r.polh,
+                '', '', '', '', '', '', ''
+              ];
+              const groupKey = `${normalizeForGroupKey(r.mCode)}|${normalizeForGroupKey(r.mPartner)}`;
+              const entry = {
+                rowValues,
+                kodVal: r.mCode || '',
+                synergatisVal: r.mPartner || '',
+                odosVal: r.originalOdos || '',
+                trVal: r.trigValue || '',
+                bazaarVal: r.bazaarValue || '',
+                transportVal: '',
+                hasTransport: !!(transportKeySet && transportKeySet.has(groupKey)),
+                originalIndex: i
+              };
+              if (!groupMap.has(groupKey)) {
+                groupMap.set(groupKey, []);
+                groupOrder.push(groupKey);
+              }
+              groupMap.get(groupKey).push(entry);
+            }
+            // Sort Οδός εντός κάθε group
+            for (const k of groupOrder) {
+              groupMap.get(k).sort((a, b) => {
+                const ao = (a.odosVal || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+                const bo = (b.odosVal || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+                if (ao === bo) return a.originalIndex - b.originalIndex;
+                if (!ao) return 1;
+                if (!bo) return -1;
+                return ao.localeCompare(bo);
+              });
+            }
+            const buckets = buildBucketsFromGroups(groupOrder, groupMap);
+
+            const centerSet = new Set(['ΤΡ','Α','Β','ΕΛ','ΣΟΚ','Ψ','ΚΤΨ','+'].map(h => normalize(h)));
+            const kodPelatiCol = 2; // πάντα 2 στο layout μας
+            const boundaries = [];
+            for (const bucketName of ['transport','none','bazaar','tr']) {
+              const groups = buckets[bucketName];
+              if (!groups.length) continue;
+              for (const { entries } of groups) {
+                for (const entry of entries) {
+                  const newRow = sheet.addRow(entry.rowValues);
+                  newRow.height = 25;
+                  newRow.eachCell((cell, colNumber) => {
+                    const headerVal = normalize(header[colNumber-1] || '');
+                    const isCenter = centerSet.has(headerVal);
+                    if (headerVal.includes('συνεργατης')) {
+                      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+                    } else {
+                      cell.alignment = { vertical: 'middle', horizontal: isCenter ? 'center' : undefined };
+                    }
+                    cell.font = { name: 'Segoe UI', size: (colNumber === kodPelatiCol ? 8.5 : 11) };
+                  });
+                }
+              }
+              boundaries.push(sheet.rowCount);
+            }
+
+            // Έλλειψη "Πόλη" → modal + warning row μέσα στο φύλλο
+            if (rawRegion.cityMissing) {
+              const warnMsg = 'Λείπει η στήλη "Πόλη" από το master input file. Παρακαλώ προσθέστε στήλη με κεφαλίδα «Πόλη» στο αρχείο εισόδου και ξανακάντε εξαγωγή.';
+              try {
+                showModal('Λείπει στήλη "Πόλη"', warnMsg);
+              } catch (e) { /* showModal not available outside */ }
+              // εισαγωγή κόκκινου warning row μετά το date row (γραμμή 2 = headers, βάλε row 3 πριν τα δεδομένα)
+              // αλλά για να μη χαλάσει το data layout, βάζουμε warning ΜΕΣΑ στη στήλη "Πόλη" του header
+              // και ένα merged cell πάνω από όλη την περιοχή δεδομένων.
+              const warnRow = sheet.addRow([]);
+              const startCol = 2, endCol = headerColCount;
+              sheet.mergeCells(warnRow.number, startCol, warnRow.number, endCol);
+              const warnCell = warnRow.getCell(startCol);
+              warnCell.value = warnMsg;
+              warnCell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFC00000' } };
+              warnCell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              warnRow.height = 40;
+            }
+
+            // Header styling
+            headerRowObj.eachCell((cell, colNumber) => {
+              cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8C8C8' } };
+              cell.font = { name: 'Tahoma', size: 8.5 };
+              const border = {
+                top:    { style: 'medium', color: { argb: 'FF000000' } },
+                bottom: { style: 'medium', color: { argb: 'FF000000' } },
+                left:   { style: 'thin', color: { argb: 'FF7F7F7F' } },
+                right:  { style: 'thin', color: { argb: 'FF7F7F7F' } }
+              };
+              if (colNumber === kodPelatiCol) border.left = { style: 'medium', color: { argb: 'FF000000' } };
+              if (colNumber === headerColCount) border.right = { style: 'medium', color: { argb: 'FF000000' } };
+              cell.border = border;
+            });
+
+            // Data cell borders + perimeter
+            const colCount = sheet.columnCount;
+            const rowCount = sheet.rowCount;
+            for (let r = 3; r <= rowCount; r++) {
+              const row = sheet.getRow(r);
+              for (let c = 1; c <= colCount; c++) {
+                const cell = row.getCell(c);
+                const cur = cell.border || {};
+                cell.border = {
+                  ...cur,
+                  left:   { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                  right:  { style: 'thin', color: { argb: 'FFA5A5A5' } },
+                  bottom: { style: 'thin', color: { argb: 'FFA5A5A5' } }
+                };
+              }
+            }
+            // Perimeter
+            const dataStart = 3, dataEnd = rowCount;
+            for (let r = dataStart; r <= dataEnd; r++) {
+              for (let c = 1; c <= colCount; c++) {
+                const cell = sheet.getRow(r).getCell(c);
+                const cur = { ...(cell.border || {}) };
+                if (r === dataStart) cur.top = { style: 'medium', color: { argb: 'FF000000' } };
+                if (r === dataEnd) cur.bottom = { style: 'medium', color: { argb: 'FF000000' } };
+                if (c === 1) cur.left = { style: 'medium', color: { argb: 'FF000000' } };
+                if (c === colCount) cur.right = { style: 'medium', color: { argb: 'FF000000' } };
+                cell.border = cur;
+              }
+            }
+            // Διπλές κάθετες στις 'Α', 'Ψ', '+'
+            let colA = -1, colPsi = -1, colPlus = -1;
+            for (let c = 1; c <= colCount; c++) {
+              const v = (header[c-1] || '').toString().trim();
+              if (v === 'Α') colA = c;
+              if (v === 'Ψ') colPsi = c;
+              if (v === '+') colPlus = c;
+            }
+            for (let r = 3; r <= rowCount; r++) {
+              const row = sheet.getRow(r);
+              for (let c = 1; c <= colCount; c++) {
+                const cell = row.getCell(c);
+                if (c === colA || c === colPsi) cell.border = { ...cell.border, left: { style: 'double', color: { argb: 'FF000000' } } };
+                if (c === colPlus) cell.border = { ...cell.border, right: { style: 'double', color: { argb: 'FF000000' } } };
+              }
+            }
+
+            // Κρύψε ID
+            sheet.getColumn(1).hidden = true;
+            // Text format
+            for (let r = 1; r <= sheet.rowCount; r++) {
+              const row = sheet.getRow(r);
+              for (let c = 1; c <= sheet.columnCount; c++) row.getCell(c).numFmt = '@';
+            }
+            // Best-fit για όλες τις στήλες (όπως στα άλλα φύλλα)
+            for (let c = 1; c <= colCount; c++) {
+              const headerVal = normalize(header[c-1] || '');
+              let maxLen = 0;
+              for (let r = 1; r <= sheet.rowCount; r++) {
+                let v = sheet.getRow(r).getCell(c).value;
+                if (v == null) v = '';
+                if (typeof v === 'object' && v.richText) v = v.richText.map(p => p.text).join('');
+                v = String(v);
+                if (v.length > maxLen) maxLen = v.length;
+              }
+              if (headerVal.includes('συνεργατης')) {
+                sheet.getColumn(c).width = Math.min(30, Math.max(8, Math.ceil(maxLen * 1.15 + 2)));
+              } else {
+                sheet.getColumn(c).width = Math.max(8, Math.min(60, Math.ceil(maxLen * 1.15 + 2)));
+              }
+            }
+
+            // Bucket bottom borders
+            applyBucketBottomBorders(sheet, boundaries);
+            // Σταθερά πλάτη ΤΕΛΕΥΤΑΙΟ
+            enforceFixedColumnWidths(sheet, header);
+          }
+
           // 1ο φύλλο: Πελατες Ημερας
           const pelatesSheet = wb.addWorksheet('Πελατες Ημερας');
           Object.assign(pelatesSheet.pageSetup, {
@@ -1894,6 +2226,8 @@
           const pelatesGroupOrder = [];
           const transportHeaderIdx = pelatesHeader.findIndex(x => normalizeForGroupKey(x).includes('μεταφορικ'));
           const regionHeaderIdx = pelatesHeader.findIndex(x => normalizeForGroupKey(x).includes('περιοχη'));
+          const idxTrHeader = pelatesHeader.findIndex(x => normalize(x) === normalize('ΤΡ'));
+          const idxBazaarHeader = pelatesHeader.findIndex(x => normalize(x) === normalize('ΜΕ BAZAAR'));
 
           for (let r = 2; r <= sheet.rowCount; r++) {
             const row = sheet.getRow(r);
@@ -1913,6 +2247,9 @@
               odosVal: odosCol > 0 ? toPlainString(rowValuesWithId[odosCol - 1]) || '' : '',
               transportVal: '',
               hasRegion: regionHeaderIdx !== -1 ? Boolean((toPlainString(rowValuesWithId[regionHeaderIdx]) || '').trim()) : false,
+              trVal: idxTrHeader !== -1 ? (toPlainString(rowValuesWithId[idxTrHeader]) || '') : '',
+              bazaarVal: idxBazaarHeader !== -1 ? (toPlainString(rowValuesWithId[idxBazaarHeader]) || '') : '',
+              hasTransport: false, // θα γεμίσει αργότερα από Πρακτορεία transportKeySet
               originalIndex: r
             };
             if (transportHeaderIdx !== -1) {
@@ -1940,42 +2277,29 @@
             return entries;
           };
 
-          const groupsWithRegion = [];
-          const groupsWithoutRegion = [];
+          // Sort Οδός εντός κάθε group (πάντα).
           for (const key of pelatesGroupOrder) {
             const entries = pelatesGroupMap.get(key);
             sortEntriesByOdos(entries);
-            const hasRegion = entries.some(entry => entry.hasRegion);
-            if (hasRegion) groupsWithRegion.push(key);
-            else groupsWithoutRegion.push(key);
-          }
-
-          const orderedGroupKeys = [...groupsWithRegion, ...groupsWithoutRegion];
-
-          const transportGroupBuckets = new Map();
-          const transportOrder = [];
-          for (const key of orderedGroupKeys) {
-            const entries = pelatesGroupMap.get(key);
-            if (!entries) continue;
-            sortEntriesByOdos(entries);
-            const sampleTransport = entries.length ? entries[0].transportVal || '' : '';
-            const transportKey = normalizeForGroupKey(sampleTransport);
-            if (!transportGroupBuckets.has(transportKey)) {
-              transportGroupBuckets.set(transportKey, []);
-              transportOrder.push(transportKey);
-            }
-            transportGroupBuckets.get(transportKey).push({ key, entries });
           }
 
           // Τα δεδομένα θα προστεθούν και θα μορφοποιηθούν μετά την ολοκλήρωση των λοιπών φύλλων
           let pelatesRowsWritten = false;
+          let pelatesBucketBoundaries = [];
 
-          function finalizePelatesSheet(groupOrderPreference = null) {
+          function finalizePelatesSheet(transportKeySet) {
             if (pelatesRowsWritten) return;
-            const usedKeys = new Set();
+            // Σήμανση hasTransport ανά γραμμή με βάση τα Πρακτορεία (ίδιο Κωδ+Συνεργάτης groupKey).
+            if (transportKeySet && transportKeySet.size) {
+              for (const key of pelatesGroupOrder) {
+                if (!transportKeySet.has(key)) continue;
+                const entries = pelatesGroupMap.get(key) || [];
+                for (const e of entries) e.hasTransport = true;
+              }
+            }
+            const buckets = buildBucketsFromGroups(pelatesGroupOrder, pelatesGroupMap);
             const appendEntries = entries => {
               if (!entries || !entries.length) return;
-              sortEntriesByOdos(entries);
               for (const entry of entries) {
                 const newRow = pelatesSheet.addRow(entry.rowValues);
                 newRow.height = 25;
@@ -1991,36 +2315,14 @@
                 });
               }
             };
-
-            const appendBucketOrder = () => {
-              if (!transportOrder.length) return;
-              for (const transportKey of transportOrder) {
-                const bucket = transportGroupBuckets.get(transportKey);
-                if (!bucket) continue;
-                for (const { key, entries } of bucket) {
-                  if (usedKeys.has(key)) continue;
-                  appendEntries(entries);
-                  usedKeys.add(key);
-                }
-              }
-            };
-
-            if (Array.isArray(groupOrderPreference)) {
-              for (const key of groupOrderPreference) {
-                const entries = pelatesGroupMap.get(key);
-                if (!entries) continue;
-                appendEntries(entries);
-                usedKeys.add(key);
-              }
+            const boundaries = [];
+            for (const bucketName of ['transport', 'none', 'bazaar', 'tr']) {
+              const groups = buckets[bucketName];
+              if (!groups.length) continue;
+              for (const { entries } of groups) appendEntries(entries);
+              boundaries.push(pelatesSheet.rowCount);
             }
-
-            appendBucketOrder();
-
-            for (const key of pelatesGroupOrder) {
-              if (usedKeys.has(key)) continue;
-              const entries = pelatesGroupMap.get(key);
-              appendEntries(entries);
-            }
+            pelatesBucketBoundaries = boundaries;
 
             // Εφαρμογή μορφοποιήσεων μετά την εισαγωγή των δεδομένων
             for (let c = 1; c <= pelatesSheet.columnCount; c++) {
@@ -2152,6 +2454,10 @@
             });
 
             applyMediumBorderEdges(pelatesSheet, kodPelatiHeaderCol, headerColCount);
+            // Παχιά μαύρα bottom borders ως διαχωριστικά των 4 buckets.
+            applyBucketBottomBorders(pelatesSheet, pelatesBucketBoundaries);
+            // Σταθερά πλάτη στηλών — εφαρμόζονται ΤΕΛΕΥΤΑΙΟ.
+            enforceFixedColumnWidths(pelatesSheet, pelatesHeader);
             pelatesRowsWritten = true;
           }
 
@@ -2242,6 +2548,9 @@
             const praktOdosCol = praktOdosHeaderIdx === -1 ? -1 : praktOdosHeaderIdx + 1;
             const idxPerioxiHeaderIdx = praktoreiaHeader.findIndex(x => advNorm(x) === 'περιοχη');
             const praktTransportHeaderIdx = praktoreiaHeader.findIndex(x => normalizeForGroupKey(x).includes('μεταφορικ'));
+            const praktDieuthMetIdx = praktoreiaHeader.findIndex(x => normalizeForGroupKey(x).includes('διευθυνσημετ'));
+            const praktTrIdx = praktoreiaHeader.findIndex(x => normalize(x) === normalize('ΤΡ'));
+            const praktBazaarIdx = praktoreiaHeader.findIndex(x => normalize(x) === normalize('ΜΕ BAZAAR'));
             const praktGroupMap = new Map();
             const praktGroupOrder = [];
             const praktGroupInfo = new Map();
@@ -2259,13 +2568,20 @@
                 return plain;
               });
               const hasObjectPlaceholder = practicalRowValues.some(val => typeof val === 'string' && /\[object Object]/i.test(val));
+              const regionVal = idxPerioxiHeaderIdx !== -1 ? toPlainString(practicalRowValues[idxPerioxiHeaderIdx] || '').trim() : '';
+              const transportValRaw = praktTransportHeaderIdx !== -1 ? (toPlainString(practicalRowValues[praktTransportHeaderIdx]) || '').trim() : '';
+              const dieuthMetVal = praktDieuthMetIdx !== -1 ? (toPlainString(practicalRowValues[praktDieuthMetIdx]) || '').trim() : '';
+              const hasTransportInfo = !!(regionVal || transportValRaw || dieuthMetVal);
               const entry = {
                 rowValues: practicalRowValues,
                 kodVal: praktKodPelatiCol > 0 ? (toPlainString(practicalRowValues[praktKodPelatiCol - 1]) || '') : '',
                 synergatisVal: praktSynergatisCol > 0 ? (toPlainString(practicalRowValues[praktSynergatisCol - 1]) || '') : '',
                 odosVal: praktOdosCol > 0 ? (toPlainString(practicalRowValues[praktOdosCol - 1]) || '') : '',
-                hasRegion: idxPerioxiHeaderIdx !== -1 ? Boolean(toPlainString(practicalRowValues[idxPerioxiHeaderIdx] || '').trim()) : false,
-                transportVal: praktTransportHeaderIdx !== -1 ? (toPlainString(practicalRowValues[praktTransportHeaderIdx + 1 - 1]) || '') : '',
+                hasRegion: !!regionVal,
+                transportVal: transportValRaw,
+                trVal: praktTrIdx !== -1 ? (toPlainString(practicalRowValues[praktTrIdx]) || '') : '',
+                bazaarVal: praktBazaarIdx !== -1 ? (toPlainString(practicalRowValues[praktBazaarIdx]) || '') : '',
+                hasTransport: hasTransportInfo,
                 originalIndex: r,
                 hasObjectPlaceholder
               };
@@ -2273,12 +2589,10 @@
               if (!praktGroupMap.has(groupKey)) {
                 praktGroupMap.set(groupKey, []);
                 praktGroupOrder.push(groupKey);
-                praktGroupInfo.set(groupKey, { hasRegion: false });
+                praktGroupInfo.set(groupKey, { hasRegion: false, hasTransport: false });
               }
-              if (entry.hasRegion) {
-                const info = praktGroupInfo.get(groupKey);
-                info.hasRegion = true;
-              }
+              if (entry.hasRegion) praktGroupInfo.get(groupKey).hasRegion = true;
+              if (entry.hasTransport) praktGroupInfo.get(groupKey).hasTransport = true;
               praktGroupMap.get(groupKey).push(entry);
               if (hasObjectPlaceholder) {
                 console.warn('[PRAKT DEBUG] raw values before addRow contain [object Object]', { row: r, values: practicalRowValues });
@@ -2298,37 +2612,25 @@
               return entries;
             };
 
-            const praktGroupsWithRegion = [];
-            const praktGroupsWithoutRegion = [];
+            // Sort Οδός εντός κάθε group ώστε να διατηρείται η εσωτερική σειρά.
+            for (const key of praktGroupOrder) sortPraktEntriesByOdos(praktGroupMap.get(key));
+
+            // Group-level hasTransport: αν ΟΠΟΙΑΔΗΠΟΤΕ entry έχει transport info, όλη η ομάδα θεωρείται transport.
             for (const key of praktGroupOrder) {
               const info = praktGroupInfo.get(key);
-              if (info && info.hasRegion) praktGroupsWithRegion.push(key);
-              else praktGroupsWithoutRegion.push(key);
-            }
-            const praktOrderedKeys = [...praktGroupsWithRegion, ...praktGroupsWithoutRegion];
-
-            const praktTransportBuckets = new Map();
-            const praktTransportOrder = [];
-            const praktFinalGroupOrder = [];
-
-            for (const key of praktOrderedKeys) {
-              const entries = praktGroupMap.get(key);
-              if (!entries) continue;
-              sortPraktEntriesByOdos(entries);
-              const sampleTransport = entries.length ? entries[0].transportVal || '' : '';
-              const transportKey = normalizeForGroupKey(sampleTransport);
-              if (!praktTransportBuckets.has(transportKey)) {
-                praktTransportBuckets.set(transportKey, []);
-                praktTransportOrder.push(transportKey);
-              }
-              praktTransportBuckets.get(transportKey).push({ key, entries });
+              if (!info || !info.hasTransport) continue;
+              const entries = praktGroupMap.get(key) || [];
+              for (const e of entries) e.hasTransport = true;
             }
 
-            for (const transportKey of praktTransportOrder) {
-              const bucket = praktTransportBuckets.get(transportKey);
-              if (!bucket) continue;
-              for (const { key, entries } of bucket) {
-                if (entries && !praktFinalGroupOrder.includes(key)) praktFinalGroupOrder.push(key);
+            // 4-bucket ordering για Πρακτορεία
+            const praktBuckets = buildBucketsFromGroups(praktGroupOrder, praktGroupMap);
+            let praktBucketBoundaries = [];
+
+            for (const bucketName of ['transport', 'none', 'bazaar', 'tr']) {
+              const groups = praktBuckets[bucketName];
+              if (!groups.length) continue;
+              for (const { entries } of groups) {
                 for (const entry of entries) {
                   const newRow = praktoreiaSheet.addRow(entry.rowValues);
                   newRow.height = 25;
@@ -2344,9 +2646,12 @@
                   });
                 }
               }
+              praktBucketBoundaries.push(praktoreiaSheet.rowCount);
             }
 
-            finalizePelatesSheet(praktFinalGroupOrder);
+            // transportKeySet για Πελάτες — όλα τα group keys που έπεσαν στο "transport" bucket
+            const transportKeySet = new Set(praktBuckets.transport.map(g => g.key));
+            finalizePelatesSheet(transportKeySet);
 
             function applyPraktoreiaVerticalMerges(sheet, headerValues) {
               if (!sheet || !Array.isArray(headerValues)) return;
@@ -2748,6 +3053,22 @@
               border.top = { style: 'medium', color: { argb: 'FF000000' } };
               border.bottom = { style: 'medium', color: { argb: 'FF000000' } };
               cell.border = border;
+            });
+            // Παχιά μαύρα bottom borders ως διαχωριστικά των 4 buckets (Πρακτορεία).
+            applyBucketBottomBorders(praktoreiaSheet, praktBucketBoundaries);
+            // Σταθερά πλάτη στηλών — εφαρμόζονται ΤΕΛΕΥΤΑΙΟ.
+            enforceFixedColumnWidths(praktoreiaSheet, praktoreiaHeader);
+            enforceFixedColumnWidths(onlyPraktoreiaSheet, praktoreiaHeader);
+
+            // ========== ΦΥΛΛΟ "Πελάτες ανά Περιοχή" ==========
+            // Δείχνει ΟΛΕΣ τις deduped γραμμές του master (χωρίς BlackList),
+            // με ΑΡΧΙΚΗ Οδός (πριν το Street Name Replace) + στήλη Πόλη.
+            buildPelatesAnaPerioxiSheet({
+              wb,
+              proc,
+              dateStr,
+              transportKeySet,
+              ONE_CM_IN_INCHES
             });
           } else {
             alert('Δεν βρέθηκε προσωρινό φύλλο Πρακτορεια Ημερας. Κάνε πρώτα προβολή.');
