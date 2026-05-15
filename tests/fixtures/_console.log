@@ -1,0 +1,18 @@
+[log] [BL DEBUG] INFO sheet names [RETAIL, SPAR, TRANS, Customer Name Replace, Street Name Replace, BlackList Customers]
+[log] [BL DEBUG] Using fallback BLACKLIST sheet BlackList Customers
+[log] [BL DEBUG] BLACKLIST rowCount 2
+[log] [BL DEBUG] Header map {kodpelati: 1, synergatis: 2, odos: 3}
+[log] [BL DEBUG] Loaded entries 0 []
+[log] [BL DEBUG] Added row preview {sheet: Sheet, safeArr: Array(12)}
+[log] [BL DEBUG] Added row preview {sheet: Sheet, safeArr: Array(12)}
+[log] [BL DEBUG] Added row preview {sheet: Sheet, safeArr: Array(12)}
+[log] [BL DEBUG] Added row preview {sheet: Sheet, safeArr: Array(12)}
+[log] [BL DEBUG] Added row preview {sheet: Sheet, safeArr: Array(12)}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πελατες Ημερας, key: horizontalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πελατες Ημερας, key: verticalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πρακτορεια Ημερας, key: horizontalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πρακτορεια Ημερας, key: verticalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Μόνο Πρακτορεία, key: horizontalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Μόνο Πρακτορεία, key: verticalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πελάτες ανά Περιοχή, key: horizontalDpi, value: 4294967295}
+[warning] [SANITIZE] removing invalid pageSetup value {sheet: Πελάτες ανά Περιοχή, key: verticalDpi, value: 4294967295}
