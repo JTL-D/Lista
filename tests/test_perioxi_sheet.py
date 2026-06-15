@@ -126,13 +126,13 @@ def run():
 
     # Verify Πελάτες Ημέρας: το 500 (ΤΡ+TRANS) πρέπει να εμφανίζεται στο φύλλο
     # (στο "tr" bucket γιατί έχει ΤΡ flag — αυτό είναι ΑΛΛΟ contract, δεν το αλλάζουμε)
-    ws_p = wb["Πελατες Ημερας"]
+    ws_p = wb["Πελάτες Ημέρας"]
     p_rows = [[ws_p.cell(r, c).value for c in range(1, ws_p.max_column + 1)] for r in range(1, ws_p.max_row + 1)]
     p_codes = [str(row[1]) for row in p_rows[2:] if row[1] not in (None, "")]
-    print("\nΠελατες Ημερας codes:", p_codes)
+    print("\nΠελάτες Ημέρας codes:", p_codes)
     for c in ("100", "200", "300", "400", "500", "600", "700"):
         if c not in p_codes:
-            errors.append(f"Code {c} λείπει από 'Πελατες Ημερας' (regression)")
+            errors.append(f"Code {c} λείπει από 'Πελάτες Ημέρας' (regression)")
 
     if errors:
         print("\nFAIL:")

@@ -1824,7 +1824,7 @@
       if (!exportBtn) {
         exportBtn = document.createElement('button');
         exportBtn.id = 'exportFinalExcelBtn';
-        exportBtn.textContent = 'Download Excel (Πελατες & Πρακτορεια Ημερας)';
+        exportBtn.textContent = 'Download Excel (Πελάτες & Πρακτορεία Ημέρας)';
         exportBtn.style.margin = '12px 0';
         exportBtn.onclick = async function() {
           // --- Hash function για ID_Παραγγελίας ---
@@ -1970,6 +1970,10 @@
           // Σταθερά πλάτη στηλών — εφαρμόζεται ΤΕΛΕΥΤΑΙΟ για να μην το χαλάει το best-fit.
           function enforceFixedColumnWidths(sheet, headerValues) {
             if (!sheet || !Array.isArray(headerValues)) return;
+            // Converts a desired Excel-dialog character-width W to the OOXML stored width.
+            // Formula (OOXML spec, Calibri 11pt MDW=7):
+            //   storedWidth = TRUNC(((W × MDW + 5) / MDW) × 256) / 256
+            const xcw = w => Math.trunc(((w * 7 + 5) / 7) * 256) / 256;
             const fixed = {
               [normalize('ΤΡ')]: 3.00,
               [normalize('Α')]: 4.59,
@@ -1978,13 +1982,113 @@
               [normalize('ΣΟΚ')]: 4.59,
               [normalize('Ψ')]: 4.59,
               [normalize('ΚΤΨ')]: 4.59,
-              [normalize('+')]: 4.59
+              [normalize('+')]: 4.59,
+              // Πρακτορεία Ημέρας — explicit max widths
+              [normalize('Περιοχή')]:        xcw(21),  // 21.71
+              [normalize('Μεταφορική')]:     xcw(21),  // 21.71
+              [normalize('Τύπος Φορτίου')]:  xcw(27),  // 27.71
+              [normalize('Μέρες')]:          xcw(27),  // 27.71
+              [normalize('Διεύθυνση Μετ')]:  xcw(41),  // 41.71
+              [normalize('ΜΕ BAZAAR')]:      xcw(10),  // 10.71
             };
             for (let i = 0; i < headerValues.length; i++) {
               const n = normalize(headerValues[i]);
               if (fixed[n] !== undefined) {
                 sheet.getColumn(i + 1).width = fixed[n];
               }
+            }
+          }
+
+          // Εφαρμόζει wrapText και fontSize σε data cells (όχι headers) για
+          // συγκεκριμένες στήλες του φύλλου Πρακτορεία Ημέρας.
+          function applyPraktoreiaColumnConstraints(sheet, headerValues) {
+            if (!sheet || !Array.isArray(headerValues)) return;
+            // wrapText: αν true, wrapText=true στο alignment
+            // fontSize: αν ορισμένο, override size στο font
+            const constraints = {
+              [normalize('Περιοχή')]:        { wrapText: true },
+              [normalize('Μεταφορική')]:     { wrapText: true },
+              [normalize('Τύπος Φορτίου')]:  { wrapText: true, fontSize: 9 },
+              [normalize('Μέρες')]:          { wrapText: true, fontSize: 9 },
+              [normalize('Διεύθυνση Μετ')]:  { wrapText: true },
+              [normalize('ΜΕ BAZAAR')]:      { fontSize: 10 },
+            };
+            // Εντόπισε header row (παρακάμπτουμε γραμμή ημερομηνίας αν υπάρχει)
+            let headerRowIdx = 1;
+            const firstRow = sheet.getRow(1);
+            let nonEmptyCells = 0;
+            for (let c = 1; c <= sheet.columnCount; c++) {
+              const v = firstRow.getCell(c).value;
+              if (v != null && String(v).trim() !== '') nonEmptyCells++;
+            }
+            if (nonEmptyCells === 1) headerRowIdx = 2;
+            // Χάρτης: 1-based columnIndex → constraint object
+            const colConstraints = new Map();
+            for (let i = 0; i < headerValues.length; i++) {
+              const n = normalize(headerValues[i]);
+              if (constraints[n]) colConstraints.set(i + 1, constraints[n]);
+            }
+            if (colConstraints.size === 0) return;
+            // Εφαρμογή μόνο στα data rows (μετά το header)
+            for (let r = headerRowIdx + 1; r <= sheet.rowCount; r++) {
+              const row = sheet.getRow(r);
+              for (const [colIdx, c] of colConstraints) {
+                const cell = row.getCell(colIdx);
+                if (c.wrapText) {
+                  cell.alignment = { ...(cell.alignment || {}), wrapText: true };
+                }
+                if (c.fontSize != null) {
+                  cell.font = { ...(cell.font || {}), size: c.fontSize };
+                }
+              }
+            }
+          }
+
+          // Αυτόματη ρύθμιση ύψους γραμμών: αν κάποιο κελί με wrapText έχει κείμενο
+          // που ξεπερνά το πλάτος της στήλης, το ύψος γίνεται 33 αντί 25.
+          function autoHeightDataRows(sheet) {
+            const colCount = sheet.columnCount;
+            const rowCount = sheet.rowCount;
+            if (!colCount || !rowCount) return;
+            // Εντοπισμός header row (παρακάμπτουμε γραμμή ημερομηνίας αν υπάρχει)
+            let headerRowIdx = 1;
+            const firstRow = sheet.getRow(1);
+            let nonEmpty = 0;
+            for (let c = 1; c <= colCount; c++) {
+              const v = firstRow.getCell(c).value;
+              if (v != null && String(v).trim() !== '') nonEmpty++;
+            }
+            if (nonEmpty === 1) headerRowIdx = 2;
+            const dataStart = headerRowIdx + 1;
+            if (dataStart > rowCount) return;
+            for (let r = dataStart; r <= rowCount; r++) {
+              const row = sheet.getRow(r);
+              let wraps = false;
+              for (let c = 1; c <= colCount && !wraps; c++) {
+                const cell = row.getCell(c);
+                if (!cell.alignment || !cell.alignment.wrapText) continue;
+                let text = cell.value;
+                if (text == null) continue;
+                if (typeof text === 'object') {
+                  if (Array.isArray(text.richText)) text = text.richText.map(p => p.text).join('');
+                  else if ('result' in text) text = String(text.result);
+                  else if ('text' in text) text = String(text.text);
+                  else text = String(text);
+                } else {
+                  text = String(text);
+                }
+                if (!text.trim()) continue;
+                if (text.includes('\n')) { wraps = true; break; }
+                const colWidth = sheet.getColumn(c).width || 8;
+                // Εκτίμηση wrap συνεπής με τον best-fit υπολογισμό πλάτους που
+                // χρησιμοποιείται αλλού (length * 1.15 + 2). Τα ελληνικά κεφαλαία
+                // είναι φαρδύτερα από το digit-width μονάδας του Excel, οπότε το
+                // κείμενο "σπάει" νωρίτερα από length === colWidth. Αν το φυσικό
+                // best-fit πλάτος του κειμένου ξεπερνά το πλάτος της στήλης → wrap.
+                const naturalWidth = text.length * 1.15 + 2;
+                if (naturalWidth > colWidth) wraps = true;
+              }
+              if (wraps) row.height = 33;
             }
           }
 
@@ -2315,8 +2419,8 @@
             }
           }
 
-          // 1ο φύλλο: Πελατες Ημερας
-          const pelatesSheet = wb.addWorksheet('Πελατες Ημερας');
+          // 1ο φύλλο: Πελάτες Ημέρας
+          const pelatesSheet = wb.addWorksheet('Πελάτες Ημέρας');
           Object.assign(pelatesSheet.pageSetup, {
             orientation: 'portrait',
             fitToPage: true,
@@ -2626,8 +2730,8 @@
             pelatesRowsWritten = true;
           }
 
-          // 2ο φύλλο: Πρακτορεια Ημερας
-          const praktoreiaSheet = wb.addWorksheet('Πρακτορεια Ημερας');
+          // 2ο φύλλο: Πρακτορεία Ημέρας
+          const praktoreiaSheet = wb.addWorksheet('Πρακτορεία Ημέρας');
           Object.assign(praktoreiaSheet.pageSetup, {
             orientation: 'landscape',
             fitToPage: true,
@@ -2636,8 +2740,8 @@
             margins: {
               top: ONE_CM_IN_INCHES,
               bottom: ONE_CM_IN_INCHES,
-              left: ONE_CM_IN_INCHES,
-              right: ONE_CM_IN_INCHES,
+              left: 0.3 / 2.54,
+              right: 0.3 / 2.54,
               header: 0.3,
               footer: 0.3
             }
@@ -2802,7 +2906,7 @@
                   newRow.eachCell((cell, colNumber) => {
                     const headerVal = (praktoreiaHeader[colNumber-1] || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '').toLowerCase();
                     const isCenter = centerHeaders2.includes(headerVal);
-                    if (headerVal.includes('συνεργάτης')) {
+                    if (headerVal.includes('συνεργατης')) {
                       cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
                     } else {
                       cell.alignment = { vertical: 'middle', horizontal: isCenter ? 'center' : undefined };
@@ -3224,15 +3328,19 @@
             // Σταθερά πλάτη στηλών — εφαρμόζονται ΤΕΛΕΥΤΑΙΟ.
             enforceFixedColumnWidths(praktoreiaSheet, praktoreiaHeader);
             enforceFixedColumnWidths(onlyPraktoreiaSheet, praktoreiaHeader);
+            // wrapText + fontSize για data cells στήλων Πρακτορεία Ημέρας.
+            applyPraktoreiaColumnConstraints(praktoreiaSheet, praktoreiaHeader);
 
             // ========== ΦΥΛΛΟ "Πελάτες ανά Περιοχή" ==========
             // Δείχνει ΟΛΕΣ τις deduped γραμμές του master (χωρίς BlackList),
             // με ΑΡΧΙΚΗ Οδός (πριν το Street Name Replace) + στήλη Πόλη.
             buildPelatesAnaPerioxiSheet({ wb, proc, dateStr, ONE_CM_IN_INCHES });
           } else {
-            alert('Δεν βρέθηκε προσωρινό φύλλο Πρακτορεια Ημερας. Κάνε πρώτα προβολή.');
+            alert('Δεν βρέθηκε προσωρινό φύλλο Πρακτορεία Ημέρας. Κάνε πρώτα προβολή.');
             return;
           }
+          // Αυτόματη αύξηση ύψους σε γραμμές με wrapped κείμενο (όλα τα φύλλα).
+          wb.eachSheet(s => autoHeightDataRows(s));
           // Αμυντικοί έλεγχοι πριν την αποθήκευση
           sanitizeWorkbookFonts(wb);
           sanitizeWorkbookStyles(wb);
